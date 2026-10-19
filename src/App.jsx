@@ -61,6 +61,7 @@ function App() {
   const [providerAccounts, setProviderAccounts] = useState([]);
   const [assignmentChoices, setAssignmentChoices] = useState({});
   const [reminders, setReminders] = useState([]);
+  const reminderAudioContext = useRef(null);
   const [reminderLoadedFor, setReminderLoadedFor] = useState("");
   const [reminderForm, setReminderForm] = useState({title:"",person:"Me",when:"",repeatDaily:false});
   const [reminderMessage, setReminderMessage] = useState("");
@@ -99,17 +100,15 @@ function App() {
           try {
             if ("Notification" in window && Notification.permission === "granted") new Notification("HealthReachCare reminder", { body: item.title + (item.person ? " · " + item.person : ""), tag: "hrc-reminder-" + item.id });
             if ("vibrate" in navigator) navigator.vibrate([250, 120, 250]);
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (AudioContextClass) {
-              const audioContext = new AudioContextClass();
-              const oscillator = audioContext.createOscillator();
-              const gain = audioContext.createGain();
-              oscillator.type = "sine";
-              oscillator.frequency.value = 880;
-              gain.gain.value = 0.12;
-              oscillator.connect(gain); gain.connect(audioContext.destination);
-              oscillator.start(); oscillator.stop(audioContext.currentTime + 0.7);
-              oscillator.onended = () => audioContext.close();
+            const audioContext = reminderAudioContext.current;
+            if (audioContext && audioContext.state !== "closed") {
+              audioContext.resume().then(() => {
+                const oscillator = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                oscillator.type = "sine"; oscillator.frequency.value = 880; gain.gain.value = 0.12;
+                oscillator.connect(gain); gain.connect(audioContext.destination);
+                oscillator.start(); oscillator.stop(audioContext.currentTime + 0.7);
+              }).catch(() => {});
             }
             setReminderMessage("Reminder: " + item.title + (item.person ? " · " + item.person : ""));
           } catch {}
@@ -515,7 +514,7 @@ function App() {
     <div className="section-heading compact"><div><div className="eyebrow">PERSONAL HEALTH TOOLS</div><h2>Reminders & emergency help</h2></div></div>
     <div className="panel"><div className="panel-heading"><div className="panel-icon"><AlarmClock/></div><div><h2>My reminders</h2><p>Medication times, appointments or care tasks for you or someone you care for.</p></div></div>
       {reminderMessage&&<div className="inline-message"><AlarmClock size={17}/><span>{reminderMessage}</span><button className="text-button" onClick={()=>setReminderMessage("")}>Dismiss</button></div>}
-      <form className="reminder-form" onSubmit={async e=>{e.preventDefault();if(!reminderForm.title.trim()||!reminderForm.when)return; if("Notification" in window && Notification.permission==="default"){try{await Notification.requestPermission();}catch{}} const item={id:crypto.randomUUID(),title:reminderForm.title.trim(),person:reminderForm.person,when:reminderForm.when,repeatDaily:reminderForm.repeatDaily,enabled:true};setReminders(prev=>[...prev,item].sort((a,b)=>new Date(a.when)-new Date(b.when)));setReminderForm({title:"",person:"Me",when:"",repeatDaily:false});setReminderMessage("Reminder saved on this device. Keep HealthReachCare open for the in-app alarm; background alerts depend on browser permissions and support.");}}>
+      <form className="reminder-form" onSubmit={async e=>{e.preventDefault();if(!reminderForm.title.trim()||!reminderForm.when)return; const AudioContextClass=window.AudioContext||window.webkitAudioContext;if(AudioContextClass&&!reminderAudioContext.current){try{reminderAudioContext.current=new AudioContextClass();await reminderAudioContext.current.resume();}catch{}} if("Notification" in window && Notification.permission==="default"){try{await Notification.requestPermission();}catch{}} const item={id:crypto.randomUUID(),title:reminderForm.title.trim(),person:reminderForm.person,when:reminderForm.when,repeatDaily:reminderForm.repeatDaily,enabled:true};setReminders(prev=>[...prev,item].sort((a,b)=>new Date(a.when)-new Date(b.when)));setReminderForm({title:"",person:"Me",when:"",repeatDaily:false});setReminderMessage("Reminder saved on this device. Keep HealthReachCare open for the in-app alarm; background alerts depend on browser permissions and support.");}}>
         <label>What should we remind you about?<input required maxLength={120} value={reminderForm.title} onChange={e=>setReminderForm({...reminderForm,title:e.target.value})} placeholder="e.g. Take morning medication"/></label>
         <div className="filter-row"><label>For<select value={reminderForm.person} onChange={e=>setReminderForm({...reminderForm,person:e.target.value})}><option>Me</option><option>My child</option><option>Parent or older relative</option><option>Someone I care for</option></select></label><label>Date and time<input type="datetime-local" required min={toLocalDateTimeInput(new Date())} value={reminderForm.when} onChange={e=>setReminderForm({...reminderForm,when:e.target.value})}/></label></div>
         <label className="reminder-check"><input type="checkbox" checked={reminderForm.repeatDaily} onChange={e=>setReminderForm({...reminderForm,repeatDaily:e.target.checked})}/> Repeat daily</label>
