@@ -17,7 +17,7 @@ service cloud.firestore {
 
     match /medicines/{medicineId} {
       // Public catalogue documents must contain public-facing fields only.
-      allow get, list: if resource.data.active == true;
+      allow get, list: if resource.data.publicCatalog == true;
       allow create, update, delete: if isAdmin();
     }
 
