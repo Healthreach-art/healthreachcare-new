@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
+import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import { addDoc, collection, doc, onSnapshot, query, orderBy, limit, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight, AlarmClock, Siren, Send,
@@ -49,6 +49,8 @@ function App() {
   const [form, setForm] = useState({name:"",phone:"",details:"",location:""});
   const [formConsent, setFormConsent] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
+  const [profileName, setProfileName] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
@@ -127,6 +129,26 @@ function App() {
     const id = window.setInterval(checkReminders, 15000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => { setProfileName(user?.displayName || ""); }, [user?.uid, user?.displayName]);
+
+  const saveProfileName = async event => {
+    event.preventDefault();
+    if (!auth?.currentUser || !profileName.trim()) return;
+    setProfileBusy(true);
+    try {
+      await updateProfile(auth.currentUser,{displayName:profileName.trim()});
+      setUser({...auth.currentUser,displayName:profileName.trim()});
+      setNotice("Your profile name has been updated.");
+    } catch { setNotice("We could not update your profile. Please try again."); }
+    finally { setProfileBusy(false); }
+  };
+
+  const sendPasswordReset = async () => {
+    if (!auth || !user?.email) return;
+    try { await sendPasswordResetEmail(auth,user.email); setNotice("Password reset instructions have been sent if the account can receive them."); }
+    catch { setNotice("We could not send password reset instructions. Check the email and try again."); }
+  };
 
   useEffect(() => {
     if (!firebaseConfigured || !auth) return;
@@ -626,7 +648,7 @@ function App() {
     } catch { setNotice("Browser notifications could not be enabled on this device."); }
   };
 
-  const renderAccount = () => <section className="page-content"><div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your personal HealthReachCare space.</p><div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign in to submit and track your healthcare requests."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div>{user ? <div className="panel"><h2>You’re signed in</h2><p className="muted">Requests you submit are linked to this account. Approved providers see requests only after assignment.</p><div className="filter-row"><button className="button button-outline" onClick={enableBrowserNotifications}><Bell size={17}/> Enable service alerts</button><button className="button button-outline" onClick={async()=>{await signOut(auth);setNotice("You have signed out.");}}><UserRound size={17}/> Sign out</button></div></div> : <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>{authMode === "signup" ? "Create your account" : "Sign in"}</h2><p>Use your email to securely submit healthcare requests.</p></div></div><div className="filter-row"><button type="button" className={authMode === "signin" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signin");setAuthError("");}}>Sign in</button><button type="button" className={authMode === "signup" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signup");setAuthError("");}}>Create account</button></div>{authError && <div className="inline-message"><AlertCircle size={18}/><span>{authError}</span></div>}<form onSubmit={handleAuth}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="you@example.com"/></label><label>Password<input type="password" required minLength={6} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label><button className="button button-primary full" disabled={authBusy} type="submit">{authBusy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button></form></div>}<ProviderVerification user={user} workspaceRole={workspaceRole}/><div className="panel"><div className="panel-heading"><div className="panel-icon"><MessageCircle/></div><div><h2>Help & Support</h2><p>Get help with a service, account, safety concern or payment.</p></div></div><button className="button button-primary full" onClick={()=>setPage("support")}>Contact support <ArrowRight size={16}/></button></div><div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Privacy, policies & patient rights</h2><p>Understand your information, service and safety choices.</p></div></div><div className="account-link-list"><button onClick={()=>setPage("privacy")}>Privacy notice <ChevronRight/></button><button onClick={()=>setPage("terms")}>Terms of service <ChevronRight/></button><button onClick={()=>setPage("cancellations")}>Cancellations & refunds <ChevronRight/></button><button onClick={()=>setPage("rights")}>Patient rights & safety <ChevronRight/></button></div></div></section>;
+  const renderAccount = () => <section className="page-content"><div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your personal HealthReachCare space.</p><div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign in to submit and track your healthcare requests."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div>{user ? <div className="panel"><h2>Profile settings</h2><p className="muted">Keep your account details up to date so providers can contact you about a service.</p><form className="support-form" onSubmit={saveProfileName}><label>Display name<input required maxLength={100} value={profileName} onChange={e=>setProfileName(e.target.value)} placeholder="Your name"/></label><button className="button button-primary" disabled={profileBusy}>{profileBusy?"Saving…":"Save profile"}</button></form><div className="filter-row"><button className="button button-outline" onClick={enableBrowserNotifications}><Bell size={17}/> Enable service alerts</button><button className="button button-outline" onClick={sendPasswordReset}>Reset password</button><button className="button button-outline" onClick={async()=>{await signOut(auth);setNotice("You have signed out.");}}><UserRound size={17}/> Sign out</button></div></div> : <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>{authMode === "signup" ? "Create your account" : "Sign in"}</h2><p>Use your email to securely submit healthcare requests.</p></div></div><div className="filter-row"><button type="button" className={authMode === "signin" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signin");setAuthError("");}}>Sign in</button><button type="button" className={authMode === "signup" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signup");setAuthError("");}}>Create account</button></div>{authError && <div className="inline-message"><AlertCircle size={18}/><span>{authError}</span></div>}<form onSubmit={handleAuth}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="you@example.com"/></label><label>Password<input type="password" required minLength={6} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label><button className="button button-primary full" disabled={authBusy} type="submit">{authBusy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button></form></div>}<ProviderVerification user={user} workspaceRole={workspaceRole}/><div className="panel"><div className="panel-heading"><div className="panel-icon"><MessageCircle/></div><div><h2>Help & Support</h2><p>Get help with a service, account, safety concern or payment.</p></div></div><button className="button button-primary full" onClick={()=>setPage("support")}>Contact support <ArrowRight size={16}/></button></div><div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Privacy, policies & patient rights</h2><p>Understand your information, service and safety choices.</p></div></div><div className="account-link-list"><button onClick={()=>setPage("privacy")}>Privacy notice <ChevronRight/></button><button onClick={()=>setPage("terms")}>Terms of service <ChevronRight/></button><button onClick={()=>setPage("cancellations")}>Cancellations & refunds <ChevronRight/></button><button onClick={()=>setPage("rights")}>Patient rights & safety <ChevronRight/></button></div></div></section>;
 
   const renderLegalPage = () => {
     const title = page === "privacy" ? "Privacy notice" : page === "terms" ? "Terms of service" : page === "cancellations" ? "Cancellations and refunds" : page === "support" ? "Help and support" : "Patient rights and safety";
