@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 import { db, firebaseConfigured } from "./firebase";
 
@@ -44,12 +44,14 @@ export default function ProviderVerification({user, workspaceRole=""}) {
     if(status==="approved"&&!window.confirm("Confirm you independently verified the applicant's identity and registration with the relevant regulator before approval?"))return;
     setBusy(true);setError("");setMessage("");
     try {
-      await updateDoc(doc(db,"providerApplications",a.id),{status,reviewedBy:user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      const batch = writeBatch(db);
+      batch.update(doc(db,"providerApplications",a.id),{status,reviewedBy:user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
       if(status==="approved"){
-        await setDoc(doc(db,"user_roles",a.applicantUid),{role:a.role,verified:true,verificationStatus:"verified",status:"approved",
+        batch.set(doc(db,"user_roles",a.applicantUid),{role:a.role,verified:true,verificationStatus:"verified",status:"approved",
           displayName:a.applicantName||a.applicantEmail,businessName:a.organisationName||"",registrationNumber:a.registrationNumber||"",location:a.location||"",approvedAt:serverTimestamp(),approvedBy:user.uid});
-        if(a.role==="doctor")await setDoc(doc(db,"doctors",a.applicantUid),{name:a.applicantName||a.applicantEmail,specialty:a.notes||"Healthcare professional",location:a.location||"",verified:true,verificationStatus:"verified",providerUid:a.applicantUid,updatedAt:serverTimestamp()});
+        if(a.role==="doctor")batch.set(doc(db,"doctors",a.applicantUid),{name:a.applicantName||a.applicantEmail,specialty:a.notes||"Healthcare professional",location:a.location||"",verified:true,verificationStatus:"verified",providerUid:a.applicantUid,updatedAt:serverTimestamp()});
       }
+      await batch.commit();
       setMessage(status==="approved"?"Provider role granted after review.":"Application rejected.");
     } catch(e){setError(e?.code==="permission-denied"?"Admin action denied by Firestore rules.":"Review did not finish; inspect application and role records before retrying.");}
     finally{setBusy(false);}
