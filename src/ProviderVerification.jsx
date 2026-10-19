@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 import { db, firebaseConfigured } from "./firebase";
 
