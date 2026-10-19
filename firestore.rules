@@ -34,6 +34,26 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /providerApplications/{applicationId} {
+      allow create: if signedIn()
+        && request.resource.data.applicantUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role in ['doctor', 'pharmacy', 'homecare']
+        && request.resource.data.keys().hasAll([
+          'applicantUid', 'applicantEmail', 'applicantName', 'role',
+          'organisationName', 'registrationNumber', 'location', 'phone',
+          'notes', 'status', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'applicantUid', 'applicantEmail', 'applicantName', 'role',
+          'organisationName', 'registrationNumber', 'location', 'phone',
+          'notes', 'status', 'createdAt', 'updatedAt'
+        ]);
+      allow get, list: if signedIn()
+        && (resource.data.applicantUid == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
     match /serviceRequests/{requestId} {
       allow create: if signedIn()
         && request.resource.data.patientUid == request.auth.uid
