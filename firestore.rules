@@ -54,6 +54,43 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /serviceRequestMessages/{messageId} {
+      function parentRequest(requestId) {
+        return get(/databases/$(database)/documents/serviceRequests/$(requestId)).data;
+      }
+      function conversationOpen(requestId) {
+        return exists(/databases/$(database)/documents/serviceRequests/$(requestId))
+          && parentRequest(requestId).status in [
+            'accepted', 'confirmed', 'in_progress', 'awaiting_patient',
+            'preparing', 'ready_for_pickup', 'out_for_delivery'
+          ];
+      }
+      allow read: if signedIn()
+        && conversationOpen(resource.data.requestId)
+        && (resource.data.patientUid == request.auth.uid
+          || resource.data.providerUid == request.auth.uid)
+        && (parentRequest(resource.data.requestId).patientUid == request.auth.uid
+          || parentRequest(resource.data.requestId).assignedProviderId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll([
+          'requestId', 'patientUid', 'providerUid', 'senderUid', 'text', 'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'requestId', 'patientUid', 'providerUid', 'senderUid', 'text', 'createdAt'
+        ])
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && conversationOpen(request.resource.data.requestId)
+        && parentRequest(request.resource.data.requestId).patientUid == request.resource.data.patientUid
+        && parentRequest(request.resource.data.requestId).assignedProviderId == request.resource.data.providerUid
+        && request.auth.uid in [
+          request.resource.data.patientUid, request.resource.data.providerUid
+        ];
+      allow update, delete: if false;
+    }
+
     match /payments/{paymentId} {
       // Payment status must only be written by a trusted server after gateway verification.
       allow read: if signedIn()
