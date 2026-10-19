@@ -5,7 +5,7 @@ import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight, AlarmClock, Siren, Send,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Menu, Pill, Search,
   ShieldCheck, Stethoscope, Truck, UserRound, Users, Video, Phone, RefreshCw,
-  Upload, House, MessageCircle, AlertCircle, X
+  Upload, House, MessageCircle, AlertCircle, X, ShoppingCart, Plus, Minus, Trash2
 } from "lucide-react";
 import { auth, db, firebaseConfigured } from "./firebase";
 import ProviderVerification from "./ProviderVerification";
@@ -31,6 +31,10 @@ function App() {
   const [requestError, setRequestError] = useState("");
   const [notificationError, setNotificationError] = useState("");
   const [doctors, setDoctors] = useState([]);
+  const [medicineCatalog, setMedicineCatalog] = useState([]);
+  const [medicineState, setMedicineState] = useState("loading");
+  const [medicineError, setMedicineError] = useState("");
+  const [cart, setCart] = useState([]);
   const [doctorState, setDoctorState] = useState("loading");
   const [doctorError, setDoctorError] = useState("");
   const [doctorSearch, setDoctorSearch] = useState("");
@@ -127,6 +131,19 @@ function App() {
   useEffect(() => {
     if (!firebaseConfigured || !auth) return;
     return onAuthStateChanged(auth, setUser);
+  }, []);
+
+  useEffect(() => {
+    if (!db) { setMedicineCatalog([]); setMedicineState("config"); return; }
+    setMedicineState("loading");
+    return onSnapshot(query(collection(db,"medicines"),where("active","==",true),limit(100)), snapshot => {
+      const rows=snapshot.docs.map(d=>({id:d.id,...d.data()})).filter(item=>Number(item.stock??0)>0);
+      rows.sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
+      setMedicineCatalog(rows); setMedicineState("ready"); setMedicineError("");
+    }, error => {
+      setMedicineState("error");
+      setMedicineError(error?.code==="permission-denied"?"The public medicine catalogue is not readable under the current access rules.":"We could not load the medicine catalogue. Please try again.");
+    });
   }, []);
 
   useEffect(() => {
@@ -354,9 +371,28 @@ function App() {
 
   const openForm = type => {
     setFormType(type);
-    setForm({name:user?.displayName || "",phone:"",details:"",location:""});
+    const orderDetails = type==="medicine" && cart.length ? cart.map(item=>item.name+" × "+item.quantity+" — R"+(Number(item.price||0)*item.quantity).toFixed(2)).join("\n") : "";
+    setForm({name:user?.displayName || "",phone:"",details:orderDetails,location:""});
     setFormConsent(false);
   };
+
+  const addMedicineToCart = medicine => {
+    if (!medicine.pharmacyId || !medicine.name || !Number.isFinite(Number(medicine.price)) || Number(medicine.price)<0) {
+      setNotice("This item is not available to order yet. Please choose an item with a confirmed pharmacy and price."); return;
+    }
+    if (cart.length && cart[0].pharmacyId !== medicine.pharmacyId) {
+      setNotice("Please complete or clear your current pharmacy order before adding items from another pharmacy."); return;
+    }
+    setCart(current=>{
+      const existing=current.find(item=>item.id===medicine.id);
+      if(existing)return current.map(item=>item.id===medicine.id?{...item,quantity:Math.min(item.quantity+1,Math.max(1,Number(medicine.stock||1)))}:item);
+      return [...current,{id:medicine.id,name:String(medicine.name),description:String(medicine.description||""),price:Number(medicine.price),stock:Number(medicine.stock||0),requiresPrescription:medicine.requiresPrescription===true,pharmacyId:medicine.pharmacyId,pharmacyName:medicine.pharmacyName||"",quantity:1}];
+    });
+    setNotice(String(medicine.requiresPrescription===true?"Prescription required: the pharmacy will verify your prescription before dispensing. ":"")+"Added to your cart.");
+  };
+
+  const cartTotal = cart.reduce((sum,item)=>sum+item.price*item.quantity,0);
+  const updateCartQuantity = (id,quantity) => setCart(current=>current.map(item=>item.id===id?{...item,quantity:Math.max(1,Math.min(Number(quantity)||1,item.stock||1))}:item));
 
   const submitForm = async event => {
     event.preventDefault();
@@ -378,10 +414,16 @@ function App() {
         patientName: form.name.trim() || user.displayName || "",
         patientEmail: user.email || "", phone: form.phone.trim(),
         location: form.location.trim(), details: form.details.trim(),
+        ...(serviceType==="medicine" && cart.length ? {
+          pharmacyId: cart[0].pharmacyId, pharmacyName: cart[0].pharmacyName,
+          items: cart.map(item=>({medicineId:item.id,name:item.name,quantity:item.quantity,unitPrice:item.price,requiresPrescription:item.requiresPrescription})),
+          orderAmount: Number(cartTotal.toFixed(2)), currency:"ZAR", orderStage:"awaiting_pharmacy_confirmation"
+        } : {}),
         privacyNoticeVersion: "2026-10-20-v1", consentAt: serverTimestamp(),
         createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       });
       setFormType("");
+      if(serviceType==="medicine" && cart.length) setCart([]);
       setForm({name:user.displayName || "",phone:"",details:"",location:""});
       setNotice("Your request was saved. A provider must be assigned before a provider workspace can process it. Track updates in Activities.");
       setPage("activities");
