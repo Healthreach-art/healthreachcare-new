@@ -7,6 +7,7 @@ Patient-facing HealthReachCare web app starter. Built with React, Vite, Firebase
 1. Install Node.js 20.19+ or 22.12+.
 2. Copy `.env.example` to `.env.local`.
 3. Add the Firebase **web app** configuration values from the intended Firebase project.
+4. Set `VITE_SUPPORT_EMAIL` to the monitored HealthReachCare customer-support mailbox before deploying. Do not use an unmonitored or invented address.
 4. Install dependencies and run the development server:
 
 ```sh
