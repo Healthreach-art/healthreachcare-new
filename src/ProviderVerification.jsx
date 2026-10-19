@@ -48,7 +48,7 @@ export default function ProviderVerification({user, workspaceRole=""}) {
       batch.update(doc(db,"providerApplications",a.id),{status,reviewedBy:user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
       if(status==="approved"){
         batch.set(doc(db,"user_roles",a.applicantUid),{role:a.role,verified:true,verificationStatus:"verified",status:"approved",
-          displayName:a.applicantName||a.applicantEmail,businessName:a.organisationName||"",registrationNumber:a.registrationNumber||"",location:a.location||"",approvedAt:serverTimestamp(),approvedBy:user.uid});
+          displayName:a.applicantName||a.applicantEmail,businessName:a.organisationName||"",registrationNumber:a.registrationNumber||"",location:a.location||"",phone:a.phone||"",approvedAt:serverTimestamp(),approvedBy:user.uid});
         if(a.role==="doctor")batch.set(doc(db,"doctors",a.applicantUid),{name:a.applicantName||a.applicantEmail,specialty:"Healthcare professional",location:a.location||"",verified:true,verificationStatus:"verified",providerUid:a.applicantUid,updatedAt:serverTimestamp()});
       }
       await batch.commit();
