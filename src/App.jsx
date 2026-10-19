@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
-import { addDoc, collection, doc, getDoc, onSnapshot, query, orderBy, limit, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, orderBy, limit, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Menu, Pill, Search,
@@ -98,7 +98,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let active = true;
     if (!db || !user) {
       setWorkspaceRole("");
       setWorkspaceStatus(user ? "unavailable" : "signed-out");
@@ -107,8 +106,7 @@ function App() {
       return;
     }
     setWorkspaceStatus("loading");
-    getDoc(doc(db, "user_roles", user.uid)).then(snapshot => {
-      if (!active) return;
+    return onSnapshot(doc(db, "user_roles", user.uid), snapshot => {
       const data = snapshot.exists() ? snapshot.data() : {};
       const role = String(data.role || "").toLowerCase();
       const approved = role === "admin" || role === "super_admin"
@@ -122,13 +120,11 @@ function App() {
         setWorkspaceStatus("unavailable");
         setWorkspaceError(role ? "Your provider account is not approved yet. Contact the HealthReachCare administrator." : "No approved provider role is linked to this account.");
       }
-    }).catch(() => {
-      if (!active) return;
+    }, () => {
       setWorkspaceRole("");
       setWorkspaceStatus("error");
       setWorkspaceError("We could not verify your workspace access. Check the user_roles security rules and try again.");
     });
-    return () => { active = false; };
   }, [user]);
 
   useEffect(() => {
