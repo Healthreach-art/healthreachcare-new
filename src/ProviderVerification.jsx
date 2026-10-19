@@ -15,14 +15,14 @@ export default function ProviderVerification({user, workspaceRole=""}) {
 
   useEffect(()=>{
     if(!db||!user){setMine([]);return;}
-    return onSnapshot(query(collection(db,"providerApplications"),where("applicantUid","==",user.uid),orderBy("createdAt","desc")),
-      s=>setMine(s.docs.map(d=>({id:d.id,...d.data()}))),()=>setError("Your application status could not be loaded."));
+    return onSnapshot(query(collection(db,"providerApplications"),where("applicantUid","==",user.uid)),
+      s=>setMine(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0))),()=>setError("Your application status could not be loaded."));
   },[user]);
 
   useEffect(()=>{
     if(!db||!user||!["admin","super_admin"].includes(workspaceRole)){setPending([]);return;}
-    return onSnapshot(query(collection(db,"providerApplications"),where("status","==","pending"),orderBy("createdAt","asc")),
-      s=>setPending(s.docs.map(d=>({id:d.id,...d.data()}))),()=>setError("Pending applications could not be loaded. Check admin permissions and Firestore indexes."));
+    return onSnapshot(query(collection(db,"providerApplications"),where("status","==","pending")),
+      s=>setPending(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdAt?.toMillis?.()||0)-(b.createdAt?.toMillis?.()||0))),()=>setError("Pending applications could not be loaded. Check admin permissions and Firestore indexes."));
   },[user,workspaceRole]);
 
   const submit = async e=>{
@@ -49,7 +49,7 @@ export default function ProviderVerification({user, workspaceRole=""}) {
       if(status==="approved"){
         batch.set(doc(db,"user_roles",a.applicantUid),{role:a.role,verified:true,verificationStatus:"verified",status:"approved",
           displayName:a.applicantName||a.applicantEmail,businessName:a.organisationName||"",registrationNumber:a.registrationNumber||"",location:a.location||"",approvedAt:serverTimestamp(),approvedBy:user.uid});
-        if(a.role==="doctor")batch.set(doc(db,"doctors",a.applicantUid),{name:a.applicantName||a.applicantEmail,specialty:a.notes||"Healthcare professional",location:a.location||"",verified:true,verificationStatus:"verified",providerUid:a.applicantUid,updatedAt:serverTimestamp()});
+        if(a.role==="doctor")batch.set(doc(db,"doctors",a.applicantUid),{name:a.applicantName||a.applicantEmail,specialty:"Healthcare professional",location:a.location||"",verified:true,verificationStatus:"verified",providerUid:a.applicantUid,updatedAt:serverTimestamp()});
       }
       await batch.commit();
       setMessage(status==="approved"?"Provider role granted after review.":"Application rejected.");
