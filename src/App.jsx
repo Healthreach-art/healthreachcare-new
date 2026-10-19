@@ -336,6 +336,7 @@ function App() {
         patientName: form.name.trim() || user.displayName || "",
         patientEmail: user.email || "", phone: form.phone.trim(),
         location: form.location.trim(), details: form.details.trim(),
+        privacyNoticeVersion: "2026-10-20-v1", consentAt: serverTimestamp(),
         createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       });
       setFormType("");
