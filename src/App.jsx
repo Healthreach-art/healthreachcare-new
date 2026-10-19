@@ -10,6 +10,7 @@ import {
 import { auth, db, firebaseConfigured } from "./firebase";
 import ProviderVerification from "./ProviderVerification";
 
+const toLocalDateTimeInput = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0,16);
 const specialties = ["All specialties","GP","Paediatrician","Cardiologist","Dermatologist","Gynaecologist","Psychiatrist","Psychologist","ENT","Ophthalmologist","Orthopaedic Surgeon","Neurologist","Endocrinologist","Urologist","Dentist","Physiotherapist"];
 const navItems = [
   { id:"home", label:"Home", icon:Home },
@@ -116,7 +117,7 @@ function App() {
             const nextWhen = new Date(item.when);
             nextWhen.setDate(nextWhen.getDate() + 1);
             while (nextWhen.getTime() <= now) nextWhen.setDate(nextWhen.getDate() + 1);
-            return { ...item, when: nextWhen.toISOString().slice(0,16), lastFiredAt: now };
+            return { ...item, when: toLocalDateTimeInput(nextWhen), lastFiredAt: now };
           }
           return { ...item, enabled: false, lastFiredAt: now };
         });
@@ -516,7 +517,7 @@ function App() {
       {reminderMessage&&<div className="inline-message"><AlarmClock size={17}/><span>{reminderMessage}</span><button className="text-button" onClick={()=>setReminderMessage("")}>Dismiss</button></div>}
       <form className="reminder-form" onSubmit={async e=>{e.preventDefault();if(!reminderForm.title.trim()||!reminderForm.when)return; if("Notification" in window && Notification.permission==="default"){try{await Notification.requestPermission();}catch{}} const item={id:crypto.randomUUID(),title:reminderForm.title.trim(),person:reminderForm.person,when:reminderForm.when,repeatDaily:reminderForm.repeatDaily,enabled:true};setReminders(prev=>[...prev,item].sort((a,b)=>new Date(a.when)-new Date(b.when)));setReminderForm({title:"",person:"Me",when:"",repeatDaily:false});setReminderMessage("Reminder saved on this device. Keep HealthReachCare open for the in-app alarm; background alerts depend on browser permissions and support.");}}>
         <label>What should we remind you about?<input required maxLength={120} value={reminderForm.title} onChange={e=>setReminderForm({...reminderForm,title:e.target.value})} placeholder="e.g. Take morning medication"/></label>
-        <div className="filter-row"><label>For<select value={reminderForm.person} onChange={e=>setReminderForm({...reminderForm,person:e.target.value})}><option>Me</option><option>My child</option><option>Parent or older relative</option><option>Someone I care for</option></select></label><label>Date and time<input type="datetime-local" required min={new Date().toISOString().slice(0,16)} value={reminderForm.when} onChange={e=>setReminderForm({...reminderForm,when:e.target.value})}/></label></div>
+        <div className="filter-row"><label>For<select value={reminderForm.person} onChange={e=>setReminderForm({...reminderForm,person:e.target.value})}><option>Me</option><option>My child</option><option>Parent or older relative</option><option>Someone I care for</option></select></label><label>Date and time<input type="datetime-local" required min={toLocalDateTimeInput(new Date())} value={reminderForm.when} onChange={e=>setReminderForm({...reminderForm,when:e.target.value})}/></label></div>
         <label className="reminder-check"><input type="checkbox" checked={reminderForm.repeatDaily} onChange={e=>setReminderForm({...reminderForm,repeatDaily:e.target.checked})}/> Repeat daily</label>
         <button className="button button-primary" type="submit">Save reminder <AlarmClock size={16}/></button>
       </form>
