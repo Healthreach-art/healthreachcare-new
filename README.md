@@ -29,6 +29,18 @@ The patient-facing UI includes home, doctor search/filtering, activity/notificat
 
 The `firestore.rules` file provides a baseline: public reads are limited to explicitly verified doctor records, notification reads are scoped to the signed-in user, patient requests can only be created for the authenticated patient, and request reads are limited to the patient, an explicitly assigned provider, or an admin role in `user_roles/{uid}`. These rules have **not yet been deployed or tested against the intended Firebase project**. The provider workspace is an initial assigned-request/status workflow, not a complete clinical or pharmacy system. A live pharmacy inventory/order fulfilment flow, secure provider onboarding/verification review, trusted payment integration, admin assignment tools, and end-to-end acceptance tests are not yet implemented. Medicine listings are not fabricated; the app shows setup messaging until the real catalogue is connected. Do not accept real clinical requests or payments until Firebase is configured, rules are deployed and tested, and provider workflows are completed.
 
+## Provider verification and payments
+
+Provider applicants can submit a doctor, pharmacy, or homecare application from Account. Applications remain pending until an administrator independently checks the relevant professional or business registration. Approval and role assignment are committed atomically; public doctor profiles contain only basic directory fields. Do not approve applicants based only on the form submission. This workflow still needs review against the actual Firebase project and real regulatory verification procedures before production use.
+
+## Free-first operating model
+
+- Keep Firebase Authentication and Firestore on the no-cost plan while usage stays within the plan's current quotas. Do not enable billing without the owner's approval. Usage limits and product eligibility can change, so check the current Firebase pricing page before enabling services.
+- Avoid Cloud Functions, paid storage, SMS authentication and file uploads until they are necessary. The current provider application form collects registration references but does not collect identity documents.
+- Host the static Vite frontend on a suitable free static-hosting tier. A small Cloudflare Worker can be evaluated for server-side endpoints and payment webhooks, subject to current platform limits.
+- Payment gateway transaction fees may still apply even when hosting is free. The browser must never mark a payment as paid. A trusted server must create payment sessions, verify signed gateway webhooks, and then update payment/order records.
+- Firestore rules default-deny collections without explicit permissions. No live gateway has been connected yet; do not collect real payments or present a payment as successful until the server-side gateway and webhook verification are implemented and tested.
+
 ## Deployment
 
 The app builds to `dist/`. It can be deployed to a static host that supports Vite assets. Configure environment variables in the deployment environment; do not commit real secrets or private credentials.
