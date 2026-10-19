@@ -85,11 +85,24 @@ service cloud.firestore {
         || (isAssignedProvider()
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'updatedAt', 'providerNotes'])
-          && request.resource.data.status in [
-            'pending', 'accepted', 'confirmed', 'in_progress',
-            'awaiting_patient', 'preparing', 'ready_for_pickup',
-            'out_for_delivery', 'completed', 'rejected', 'cancelled'
-          ]);
+          && (
+            (resource.data.serviceType == 'appointment'
+              && ((resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'confirmed', 'rejected'])
+                || (resource.data.status == 'accepted' && request.resource.data.status in ['confirmed', 'rejected'])
+                || (resource.data.status == 'confirmed' && request.resource.data.status in ['awaiting_patient', 'completed', 'rejected'])
+                || (resource.data.status == 'awaiting_patient' && request.resource.data.status in ['confirmed', 'completed'])))
+            || (resource.data.serviceType in ['medicine', 'prescription']
+              && ((resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'rejected'])
+                || (resource.data.status == 'accepted' && request.resource.data.status in ['preparing', 'rejected'])
+                || (resource.data.status == 'preparing' && request.resource.data.status in ['ready_for_pickup', 'out_for_delivery'])
+                || (resource.data.status == 'ready_for_pickup' && request.resource.data.status in ['out_for_delivery', 'completed'])
+                || (resource.data.status == 'out_for_delivery' && request.resource.data.status == 'completed')))
+            || (resource.data.serviceType == 'homecare'
+              && ((resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'rejected'])
+                || (resource.data.status == 'accepted' && request.resource.data.status in ['confirmed', 'in_progress', 'rejected'])
+                || (resource.data.status == 'confirmed' && request.resource.data.status in ['in_progress', 'rejected'])
+                || (resource.data.status == 'in_progress' && request.resource.data.status == 'completed')))
+          ));
 
       allow delete: if isAdmin();
     }
