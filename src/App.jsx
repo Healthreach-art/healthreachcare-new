@@ -136,8 +136,8 @@ function App() {
   useEffect(() => {
     if (!db) { setMedicineCatalog([]); setMedicineState("config"); return; }
     setMedicineState("loading");
-    return onSnapshot(query(collection(db,"medicines"),where("active","==",true),limit(100)), snapshot => {
-      const rows=snapshot.docs.map(d=>({id:d.id,...d.data()})).filter(item=>Number(item.stock??0)>0);
+    return onSnapshot(query(collection(db,"medicines"),where("publicCatalog","==",true),limit(100)), snapshot => {
+      const rows=snapshot.docs.map(d=>({id:d.id,...d.data()})).filter(item=>item.active===true&&Number(item.stock??0)>0);
       rows.sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
       setMedicineCatalog(rows); setMedicineState("ready"); setMedicineError("");
     }, error => {
