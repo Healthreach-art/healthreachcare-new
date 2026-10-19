@@ -15,6 +15,12 @@ service cloud.firestore {
       return signedIn() && resource.data.assignedProviderId == request.auth.uid;
     }
 
+    match /medicines/{medicineId} {
+      // Public catalogue documents must contain public-facing fields only.
+      allow get, list: if resource.data.active == true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /doctors/{doctorId} {
       // Public directory only exposes practitioners explicitly marked verified.
       allow get, list: if resource.data.verified == true
@@ -110,8 +116,18 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'serviceType', 'status', 'patientUid', 'patientName',
           'patientEmail', 'phone', 'location', 'details',
-          'privacyNoticeVersion', 'consentAt', 'createdAt', 'updatedAt'
-        ]);
+          'privacyNoticeVersion', 'consentAt', 'createdAt', 'updatedAt',
+          'items', 'pharmacyId', 'pharmacyName', 'orderAmount', 'currency', 'orderStage'
+        ])
+        && (request.resource.data.serviceType != 'medicine'
+          || (request.resource.data.items is list
+            && request.resource.data.items.size() > 0
+            && request.resource.data.items.size() <= 20
+            && request.resource.data.pharmacyId is string
+            && request.resource.data.orderAmount is number
+            && request.resource.data.orderAmount >= 0
+            && request.resource.data.currency == 'ZAR'
+            && request.resource.data.orderStage == 'awaiting_pharmacy_confirmation'));
 
       allow get, list: if signedIn()
         && (resource.data.patientUid == request.auth.uid || isAssignedProvider() || isAdmin());
