@@ -54,6 +54,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /payments/{paymentId} {
+      // Payment status must only be written by a trusted server after gateway verification.
+      allow read: if signedIn()
+        && (resource.data.patientUid == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
     match /serviceRequests/{requestId} {
       allow create: if signedIn()
         && request.resource.data.patientUid == request.auth.uid
