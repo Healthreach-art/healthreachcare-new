@@ -220,6 +220,9 @@ function App() {
       await updateDoc(doc(db, "serviceRequests", requestId), {
         assignedProviderId: provider.uid,
         assignedProviderRole: String(provider.role).toLowerCase(),
+        assignedProviderName: provider.displayName || provider.name || "",
+        assignedProviderBusinessName: provider.businessName || "",
+        assignedProviderPhone: provider.phone || "",
         updatedAt: serverTimestamp()
       });
     } catch (error) {
@@ -278,7 +281,7 @@ function App() {
     const request = serviceRequests.find(item => item.id === chatRequestId);
     const allowed = request && request.assignedProviderId && ["accepted","confirmed","in_progress","preparing","ready_for_pickup","out_for_delivery","awaiting_patient"].includes(request.status);
     if (!allowed) { setChatMessages([]); setChatError("Messaging is available only while your assigned service is in progress."); return; }
-    return onSnapshot(query(collection(db,"serviceRequestMessages"),where("requestId","==",chatRequestId),limit(100)), snapshot => {
+    return onSnapshot(query(collection(db,"serviceRequestMessages"),where("requestId","==",chatRequestId),where("patientUid","==",user.uid),limit(100)), snapshot => {
       const rows = snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdAt?.toMillis?.()||0)-(b.createdAt?.toMillis?.()||0));
       setChatMessages(rows); setChatError("");
     }, error => setChatError(error?.code==="permission-denied" ? "This conversation is restricted to you and your assigned provider while the service is active." : "Messages could not be loaded."));
@@ -443,7 +446,7 @@ function App() {
     <div className="panel"><div className="panel-heading"><div className="panel-icon"><ClipboardList/></div><div><h2>Your service history</h2><p>Open any service to view its status, details, provider and map links.</p></div></div>
       {!user?<p className="muted">Sign in to see your service history.</p>:serviceRequests.length===0?<div className="empty-state"><ClipboardList size={26}/><h3>Your care journey will appear here</h3><p>Your submitted appointments, medicine orders and homecare requests are listed here.</p><button className="button button-primary" onClick={()=>setPage("home")}>Explore services</button></div>:serviceRequests.map(r=>{
         const stages=trackingStages(r);const idx=trackingIndex(r);const isOpen=expandedRequestId===r.id;
-        const active=!!r.assignedProviderId&&!["completed","rejected","cancelled"].includes(r.status);
+        const active=!!r.assignedProviderId&&["accepted","confirmed","in_progress","awaiting_patient","preparing","ready_for_pickup","out_for_delivery"].includes(r.status);
         return <article className="activity-card" key={r.id}>
           <button type="button" className="activity-card-toggle" onClick={()=>setExpandedRequestId(isOpen?"":r.id)}>
             <span className="activity-type-icon">{r.serviceType==="medicine"?<Pill/>:r.serviceType==="appointment"?<Stethoscope/>:r.serviceType==="homecare"?<House/>:<ClipboardList/>}</span>
