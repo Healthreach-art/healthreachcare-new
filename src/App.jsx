@@ -59,18 +59,34 @@ function App() {
     }
     setDoctorState("loading");
     setDoctorError("");
-    const q = query(collection(db, "doctors"), limit(100));
-    const unsubscribe = onSnapshot(q, snapshot => {
-      const rows = snapshot.docs.map(d => ({ id:d.id, ...d.data() }));
-      setDoctors(rows.filter(d => d.verified === true || d.isVerified === true || d.verificationStatus === "verified"));
+    const batches = new Map();
+    const publish = () => {
+      const merged = new Map();
+      for (const rows of batches.values()) {
+        for (const doctor of rows) merged.set(doctor.id, doctor);
+      }
+      setDoctors([...merged.values()]);
       setDoctorState("ready");
-    }, error => {
-      setDoctorState("error");
-      setDoctorError(error?.code === "permission-denied"
-        ? "Your account cannot read the verified doctor directory. Check the Firestore read rules for published, verified doctor profiles."
-        : "We couldn’t load the doctor directory. Check your connection and Firebase configuration, then try again.");
-    });
-    return unsubscribe;
+    };
+    const specs = [
+      ["verified", "verified", true],
+      ["isVerified", "isVerified", true],
+      ["verificationStatus", "verificationStatus", "verified"]
+    ];
+    const unsubscribers = specs.map(([key, field, value]) => onSnapshot(
+      query(collection(db, "doctors"), where(field, "==", value), limit(100)),
+      snapshot => {
+        batches.set(key, snapshot.docs.map(d => ({ id:d.id, ...d.data() })));
+        publish();
+      },
+      error => {
+        setDoctorState("error");
+        setDoctorError(error?.code === "permission-denied"
+          ? "Your account cannot read the published doctor directory. Check the Firestore rules for verified practitioner records."
+          : "We couldn’t load the doctor directory. Check your connection and Firebase configuration, then try again.");
+      }
+    ));
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
   }, []);
 
   useEffect(() => {
