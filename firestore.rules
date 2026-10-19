@@ -105,12 +105,12 @@ service cloud.firestore {
         && request.resource.data.serviceType in ['appointment', 'homecare', 'prescription', 'medicine']
         && request.resource.data.keys().hasAll([
           'serviceType', 'status', 'patientUid', 'patientName',
-          'patientEmail', 'phone', 'location', 'details', 'createdAt', 'updatedAt'
+          'patientEmail', 'phone', 'location', 'details', 'privacyNoticeVersion', 'consentAt', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
           'serviceType', 'status', 'patientUid', 'patientName',
           'patientEmail', 'phone', 'location', 'details',
-          'createdAt', 'updatedAt'
+          'privacyNoticeVersion', 'consentAt', 'createdAt', 'updatedAt'
         ]);
 
       allow get, list: if signedIn()
