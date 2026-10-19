@@ -62,7 +62,7 @@ export default function ProviderVerification({user, workspaceRole=""}) {
     <div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Provider verification</h2><p>Approval requires an administrator to check registration.</p></div></div>
     {error&&<div className="inline-message"><AlertCircle size={18}/><span>{error}</span></div>}
     {message&&<div className="inline-message"><ShieldCheck size={18}/><span>{message}</span></div>}
-    {!["admin","super_admin"].includes(workspaceRole)&&<form onSubmit={submit}>
+    {!["admin","super_admin"].includes(workspaceRole)&&<form className="verification-form" onSubmit={submit}>
       <label>Provider type<select required value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>{types.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
       <label>Practice / pharmacy / organisation name<input required value={form.organisationName} onChange={e=>setForm({...form,organisationName:e.target.value})}/></label>
       <label>Professional or business registration number<input required value={form.registrationNumber} onChange={e=>setForm({...form,registrationNumber:e.target.value})}/></label>
