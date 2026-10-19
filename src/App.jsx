@@ -50,6 +50,8 @@ function App() {
   const [workspaceError, setWorkspaceError] = useState("");
   const [assignedRequests, setAssignedRequests] = useState([]);
   const [savingRequestId, setSavingRequestId] = useState("");
+  const [providerAccounts, setProviderAccounts] = useState([]);
+  const [assignmentChoices, setAssignmentChoices] = useState({});
 
   useEffect(() => {
     if (!firebaseConfigured || !auth) return;
@@ -149,6 +151,35 @@ function App() {
     });
   }, [user, workspaceRole, workspaceStatus]);
 
+  useEffect(() => {
+    if (!db || !user || !["admin", "super_admin"].includes(workspaceRole) || workspaceStatus !== "ready") {
+      setProviderAccounts([]);
+      return;
+    }
+    return onSnapshot(query(collection(db, "user_roles"), limit(100)), snapshot => {
+      const approved = snapshot.docs.map(d => ({ uid: d.id, ...d.data() }))
+        .filter(p => ["doctor", "pharmacy", "homecare"].includes(String(p.role || "").toLowerCase())
+          && (p.verified === true || p.verificationStatus === "verified" || p.status === "approved"));
+      setProviderAccounts(approved);
+    }, () => setWorkspaceError("Approved provider accounts could not be loaded for assignment."));
+  }, [user, workspaceRole, workspaceStatus]);
+
+  const assignServiceRequest = async requestId => {
+    if (!db || !["admin", "super_admin"].includes(workspaceRole)) return;
+    const providerUid = assignmentChoices[requestId];
+    const provider = providerAccounts.find(p => p.uid === providerUid);
+    if (!provider) { setWorkspaceError("Choose an approved provider before assigning this request."); return; }
+    setSavingRequestId(requestId); setWorkspaceError("");
+    try {
+      await updateDoc(doc(db, "serviceRequests", requestId), {
+        assignedProviderId: provider.uid,
+        assignedProviderRole: String(provider.role).toLowerCase(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      setWorkspaceError(error?.code === "permission-denied" ? "The administrator role cannot assign this request under the current Firestore rules." : "Assignment was not saved. Please try again.");
+    } finally { setSavingRequestId(""); }
+  };
   const updateProviderRequest = async (requestId, status) => {
     if (!db || !user || !workspaceRole || !["accepted", "confirmed", "in_progress", "awaiting_patient", "completed", "rejected"].includes(status)) return;
     setSavingRequestId(requestId);
@@ -320,7 +351,7 @@ function App() {
     {workspaceStatus === "ready" && <><div className="trust-grid"><div><ClipboardList/><strong>{assignedRequests.length} requests</strong><p>Requests visible to this role</p></div><div><Clock3/><strong>{assignedRequests.filter(r=>["pending","accepted","confirmed","in_progress"].includes(r.status)).length} active</strong><p>Awaiting completion</p></div><div><ShieldCheck/><strong>Approved role</strong><p>Access verified from user_roles</p></div></div>
       {workspaceError && <div className="inline-message"><AlertCircle size={18}/><span>{workspaceError}</span></div>}
       <div className="panel"><div className="panel-heading"><div className="panel-icon"><ClipboardList/></div><div><h2>{workspaceRole === "admin" || workspaceRole === "super_admin" ? "All service requests" : "Assigned service requests"}</h2><p>{workspaceRole === "pharmacy" ? "Review medicine and prescription requests" : workspaceRole === "homecare" ? "Coordinate homecare requests" : workspaceRole === "doctor" ? "Manage appointment requests" : "Review requests; assignment must be completed by an authorised admin workflow"}</p></div></div>
-      {assignedRequests.length === 0 ? <div className="empty-state"><ClipboardList size={26}/><h3>No requests available</h3><p>Providers see requests only after an administrator assigns them. This workspace does not invent sample records.</p></div> : assignedRequests.map(r=><article className="notification-item" key={r.id}><span className="notification-dot"/><div style={{width:"100%"}}><strong>{({appointment:"Doctor appointment",homecare:"Homecare request",prescription:"Prescription enquiry",medicine:"Medicine order"})[r.serviceType] || "Healthcare request"}</strong><p>Status: {String(r.status || "pending").replaceAll("_"," ")} · {r.patientName || "Patient"}</p><p className="muted small">{r.location || "Location not provided"}{r.phone ? " · "+r.phone : ""}</p><p>{r.details || "No additional details."}</p>{workspaceRole !== "admin" && workspaceRole !== "super_admin" && <div className="filter-row"><button className="button button-outline" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"accepted")}>Accept</button><button className="button button-outline" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"in_progress")}>In progress</button><button className="button button-primary" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"completed")}>{savingRequestId===r.id ? "Saving…" : "Complete"}</button></div>}</div></article>)}</div>
+      {assignedRequests.length === 0 ? <div className="empty-state"><ClipboardList size={26}/><h3>No requests available</h3><p>Providers see requests only after an administrator assigns them. This workspace does not invent sample records.</p></div> : assignedRequests.map(r=><article className="notification-item" key={r.id}><span className="notification-dot"/><div style={{width:"100%"}}><strong>{({appointment:"Doctor appointment",homecare:"Homecare request",prescription:"Prescription enquiry",medicine:"Medicine order"})[r.serviceType] || "Healthcare request"}</strong><p>Status: {String(r.status || "pending").replaceAll("_"," ")} · {r.patientName || "Patient"}</p><p className="muted small">{r.location || "Location not provided"}{r.phone ? " · "+r.phone : ""}</p><p>{r.details || "No additional details."}</p>{workspaceRole !== "admin" && workspaceRole !== "super_admin" && <div className="filter-row"><button className="button button-outline" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"accepted")}>Accept</button><button className="button button-outline" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"in_progress")}>In progress</button><button className="button button-primary" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"completed")}>{savingRequestId===r.id ? "Saving…" : "Complete"}</button></div>}{["admin", "super_admin"].includes(workspaceRole) && <div className="filter-row"><label><span>Assign to approved provider</span><select value={assignmentChoices[r.id] || ""} onChange={e=>setAssignmentChoices(prev=>({...prev,[r.id]:e.target.value}))}><option value="">Choose provider…</option>{providerAccounts.filter(p=>r.serviceType==="appointment" ? p.role==="doctor" : r.serviceType==="homecare" ? p.role==="homecare" : r.serviceType==="medicine" || r.serviceType==="prescription" ? p.role==="pharmacy" : true).map(p=><option key={p.uid} value={p.uid}>{p.displayName || p.businessName || p.name || p.uid.slice(0,8)} · {p.role}</option>)}</select></label><button className="button button-primary" disabled={savingRequestId===r.id || !assignmentChoices[r.id]} onClick={()=>assignServiceRequest(r.id)}>{savingRequestId===r.id ? "Assigning…" : "Assign request"}</button></div>}</div></article>)}</div>
     </>}
   </section>;
 
