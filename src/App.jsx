@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
-import { addDoc, collection, onSnapshot, query, orderBy, limit, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, onSnapshot, query, limit, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Menu, Pill, Search,
@@ -45,6 +45,11 @@ function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [workspaceRole, setWorkspaceRole] = useState("");
+  const [workspaceStatus, setWorkspaceStatus] = useState("loading");
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [assignedRequests, setAssignedRequests] = useState([]);
+  const [savingRequestId, setSavingRequestId] = useState("");
 
   useEffect(() => {
     if (!firebaseConfigured || !auth) return;
@@ -88,6 +93,76 @@ function App() {
     ));
     return () => unsubscribers.forEach(unsubscribe => unsubscribe());
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!db || !user) {
+      setWorkspaceRole("");
+      setWorkspaceStatus(user ? "unavailable" : "signed-out");
+      setWorkspaceError("");
+      setAssignedRequests([]);
+      return;
+    }
+    setWorkspaceStatus("loading");
+    getDoc(doc(db, "user_roles", user.uid)).then(snapshot => {
+      if (!active) return;
+      const data = snapshot.exists() ? snapshot.data() : {};
+      const role = String(data.role || "").toLowerCase();
+      const approved = role === "admin" || role === "super_admin"
+        || data.verified === true || data.verificationStatus === "verified" || data.status === "approved";
+      if (["doctor", "pharmacy", "homecare", "admin", "super_admin"].includes(role) && approved) {
+        setWorkspaceRole(role);
+        setWorkspaceStatus("ready");
+        setWorkspaceError("");
+      } else {
+        setWorkspaceRole("");
+        setWorkspaceStatus("unavailable");
+        setWorkspaceError(role ? "Your provider account is not approved yet. Contact the HealthReachCare administrator." : "No approved provider role is linked to this account.");
+      }
+    }).catch(() => {
+      if (!active) return;
+      setWorkspaceRole("");
+      setWorkspaceStatus("error");
+      setWorkspaceError("We could not verify your workspace access. Check the user_roles security rules and try again.");
+    });
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
+    if (!db || !user || !workspaceRole || workspaceStatus !== "ready") {
+      setAssignedRequests([]);
+      return;
+    }
+    const requestsRef = collection(db, "serviceRequests");
+    const requestsQuery = workspaceRole === "admin" || workspaceRole === "super_admin"
+      ? query(requestsRef, limit(100))
+      : query(requestsRef, where("assignedProviderId", "==", user.uid), limit(100));
+    return onSnapshot(requestsQuery, snapshot => {
+      const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      rows.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      setAssignedRequests(rows);
+      setWorkspaceError("");
+    }, error => {
+      setWorkspaceError(error?.code === "permission-denied"
+        ? "Your role cannot read these requests. Only administrators and explicitly assigned providers can access them."
+        : "Workspace requests could not be loaded. Please try again.");
+    });
+  }, [user, workspaceRole, workspaceStatus]);
+
+  const updateProviderRequest = async (requestId, status) => {
+    if (!db || !user || !workspaceRole || !["accepted", "confirmed", "in_progress", "awaiting_patient", "completed", "rejected"].includes(status)) return;
+    setSavingRequestId(requestId);
+    setWorkspaceError("");
+    try {
+      await updateDoc(doc(db, "serviceRequests", requestId), { status, updatedAt: serverTimestamp() });
+    } catch (error) {
+      setWorkspaceError(error?.code === "permission-denied"
+        ? "This request is not assigned to your account or your role cannot update it."
+        : "The request status was not saved. Check your connection and try again.");
+    } finally {
+      setSavingRequestId("");
+    }
+  };
 
   useEffect(() => {
     if (!db || !user) {
@@ -149,7 +224,7 @@ function App() {
       return;
     }
     try {
-      const serviceType = formType === "appointment" ? "appointment" : formType === "homecare" ? "homecare" : "prescription";
+      const serviceType = formType === "appointment" ? "appointment" : formType === "homecare" ? "homecare" : formType === "medicine" ? "medicine" : "prescription";
       await addDoc(collection(db, "serviceRequests"), {
         serviceType, status: "pending", patientUid: user.uid,
         patientName: form.name.trim() || user.displayName || "",
@@ -159,7 +234,7 @@ function App() {
       });
       setFormType("");
       setForm({name:user.displayName || "",phone:"",details:"",location:""});
-      setNotice("Your request was submitted. You can follow updates in Activities as provider workflows become available.");
+      setNotice("Your request was saved. A provider must be assigned before a provider workspace can process it. Track updates in Activities.");
       setPage("activities");
     } catch (error) {
       setNotice(error?.code === "permission-denied"
@@ -235,18 +310,30 @@ function App() {
 
   const renderActivities = () => <section className="page-content"><div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Keep track of your healthcare requests and account updates.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><ClipboardList/></div><div><h2>Your requests</h2><p>Appointment, homecare and prescription requests submitted by you</p></div></div>{!user ? <div className="inline-message"><AlertCircle size={18}/><span>Sign in to view requests linked to your account.</span><button className="text-button" onClick={()=>setPage("account")}>Sign in <ArrowRight size={14}/></button></div> : requestError ? <div className="inline-message"><AlertCircle size={18}/><span>{requestError}</span></div> : serviceRequests.length ? serviceRequests.map(r=><div className="notification-item" key={r.id}><span className="notification-dot"/><div><strong>{({appointment:"Doctor appointment",homecare:"Homecare",prescription:"Prescription enquiry",medicine:"Medicine order"})[r.serviceType] || "Healthcare request"}</strong><p>Status: {String(r.status || "pending").replaceAll("_"," ")}</p>{r.createdAt?.toDate && <small>{r.createdAt.toDate().toLocaleString()}</small>}</div></div>) : <div className="empty-state"><ClipboardList size={26}/><h3>No requests yet</h3><p>Requests you submit will appear here once they are saved to your account.</p></div>}</div><div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Updates from your HealthReachCare account</p></div></div>{notificationError ? <div className="inline-message"><AlertCircle size={18}/><span>{notificationError}</span></div> : notifications.length ? notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p>{n.createdAt?.toDate && <small>{n.createdAt.toDate().toLocaleString()}</small>}</div></div>) : <div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>When there are updates to your appointments, orders or requests, they will appear here.</p></div>}</div></section>;
 
-  const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div>{!db ? <div className="inline-message"><AlertCircle size={18}/><span>Firebase is not configured yet, so stock and medicine availability cannot be loaded. We won’t show invented products or prices.</span></div> : <div className="inline-message"><RefreshCw size={18}/><span>The catalogue connection needs the approved medicines collection and pharmacy access rules before ordering can be enabled.</span></div>}<button className="button button-primary" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
+  const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div>{!db ? <div className="inline-message"><AlertCircle size={18}/><span>Firebase is not configured yet, so stock and medicine availability cannot be loaded. We won’t show invented products or prices.</span></div> : <div className="inline-message"><RefreshCw size={18}/><span>The catalogue connection needs the approved medicines collection and pharmacy access rules before ordering can be enabled.</span></div>}<button className="button button-primary" onClick={()=>openForm("medicine")}>Request a medicine order <ArrowRight size={16}/></button><button className="button button-outline" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
 
-  const renderAccount = () => <section className="page-content"><div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your personal HealthReachCare space.</p><div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign in to submit and track your healthcare requests."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div>{user ? <div className="panel"><h2>You’re signed in</h2><p className="muted">Requests you submit are linked to this account.</p><button className="button button-outline" onClick={async()=>{await signOut(auth);setNotice("You have signed out.");}}><UserRound size={17}/> Sign out</button></div> : <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>{authMode === "signup" ? "Create your account" : "Sign in"}</h2><p>Use your email to securely submit healthcare requests.</p></div></div><div className="filter-row"><button type="button" className={authMode === "signin" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signin");setAuthError("");}}>Sign in</button><button type="button" className={authMode === "signup" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signup");setAuthError("");}}>Create account</button></div>{authError && <div className="inline-message"><AlertCircle size={18}/><span>{authError}</span></div>}<form onSubmit={handleAuth}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="you@example.com"/></label><label>Password<input type="password" required minLength={6} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label><button className="button button-primary full" disabled={authBusy} type="submit">{authBusy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button></form></div>}<div className="panel"><h2>Need help?</h2><p className="muted">Contact your HealthReachCare support team for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured by the HealthReachCare team.")}><MessageCircle size={17}/> Contact support</button></div></section>;
+  const renderWorkspace = () => <section className="page-content">
+    <div className="eyebrow">PROVIDER OPERATIONS</div><h1>{workspaceRole === "doctor" ? "Doctor workspace" : workspaceRole === "pharmacy" ? "Pharmacy workspace" : workspaceRole === "homecare" ? "Homecare workspace" : "Administration workspace"}</h1>
+    <p className="lead">Live service requests assigned to your approved account. Patient data is limited by the Firestore rules.</p>
+    {workspaceStatus === "loading" && <div className="state-card"><RefreshCw className="spin" size={22}/><div><strong>Checking workspace access</strong><p>Verifying your role and approval status.</p></div></div>}
+    {(workspaceStatus === "signed-out" || workspaceStatus === "unavailable" || workspaceStatus === "error") && <div className="inline-message"><ShieldCheck size={18}/><span>{workspaceStatus === "signed-out" ? "Sign in with your provider account to access this workspace." : workspaceError || "Workspace access is not available."}</span><button className="text-button" onClick={()=>setPage("account")}>Open account <ArrowRight size={14}/></button></div>}
+    {workspaceStatus === "ready" && <><div className="trust-grid"><div><ClipboardList/><strong>{assignedRequests.length} requests</strong><p>Requests visible to this role</p></div><div><Clock3/><strong>{assignedRequests.filter(r=>["pending","accepted","confirmed","in_progress"].includes(r.status)).length} active</strong><p>Awaiting completion</p></div><div><ShieldCheck/><strong>Approved role</strong><p>Access verified from user_roles</p></div></div>
+      {workspaceError && <div className="inline-message"><AlertCircle size={18}/><span>{workspaceError}</span></div>}
+      <div className="panel"><div className="panel-heading"><div className="panel-icon"><ClipboardList/></div><div><h2>{workspaceRole === "admin" || workspaceRole === "super_admin" ? "All service requests" : "Assigned service requests"}</h2><p>{workspaceRole === "pharmacy" ? "Review medicine and prescription requests" : workspaceRole === "homecare" ? "Coordinate homecare requests" : workspaceRole === "doctor" ? "Manage appointment requests" : "Review requests; assignment must be completed by an authorised admin workflow"}</p></div></div>
+      {assignedRequests.length === 0 ? <div className="empty-state"><ClipboardList size={26}/><h3>No requests available</h3><p>Providers see requests only after an administrator assigns them. This workspace does not invent sample records.</p></div> : assignedRequests.map(r=><article className="notification-item" key={r.id}><span className="notification-dot"/><div style={{width:"100%"}}><strong>{({appointment:"Doctor appointment",homecare:"Homecare request",prescription:"Prescription enquiry",medicine:"Medicine order"})[r.serviceType] || "Healthcare request"}</strong><p>Status: {String(r.status || "pending").replaceAll("_"," ")} · {r.patientName || "Patient"}</p><p className="muted small">{r.location || "Location not provided"}{r.phone ? " · "+r.phone : ""}</p><p>{r.details || "No additional details."}</p>{workspaceRole !== "admin" && workspaceRole !== "super_admin" && <div className="filter-row"><button className="button button-outline" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"accepted")}>Accept</button><button className="button button-outline" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"in_progress")}>In progress</button><button className="button button-primary" disabled={savingRequestId===r.id} onClick={()=>updateProviderRequest(r.id,"completed")}>{savingRequestId===r.id ? "Saving…" : "Complete"}</button></div>}</div></article>)}</div>
+    </>}
+  </section>;
+
+  const renderAccount = () => <section className="page-content"><div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your personal HealthReachCare space.</p><div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign in to submit and track your healthcare requests."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div>{user ? <div className="panel"><h2>You’re signed in</h2><p className="muted">Requests you submit are linked to this account. Approved providers see requests only after assignment.</p><button className="button button-outline" onClick={async()=>{await signOut(auth);setNotice("You have signed out.");}}><UserRound size={17}/> Sign out</button></div> : <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>{authMode === "signup" ? "Create your account" : "Sign in"}</h2><p>Use your email to securely submit healthcare requests.</p></div></div><div className="filter-row"><button type="button" className={authMode === "signin" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signin");setAuthError("");}}>Sign in</button><button type="button" className={authMode === "signup" ? "button button-primary" : "button button-outline"} onClick={()=>{setAuthMode("signup");setAuthError("");}}>Create account</button></div>{authError && <div className="inline-message"><AlertCircle size={18}/><span>{authError}</span></div>}<form onSubmit={handleAuth}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="you@example.com"/></label><label>Password<input type="password" required minLength={6} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label><button className="button button-primary full" disabled={authBusy} type="submit">{authBusy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button></form></div>}<div className="panel"><h2>Need help?</h2><p className="muted">Contact your HealthReachCare support team for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured by the HealthReachCare team.")}><MessageCircle size={17}/> Contact support</button></div></section>;
 
   return <div className="app-shell">
-    <header className="topbar"><button className="mobile-menu" aria-label="Open home" onClick={()=>setPage("home")}><Menu/></button><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
+    <header className="topbar"><button className="mobile-menu" aria-label="Open home" onClick={()=>setPage("home")}><Menu/></button><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button>{workspaceRole && <button className="button button-outline" onClick={()=>setPage("workspace")}>Workspace</button>}<button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
     {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
     </header>
-    <main>{page === "home" ? renderHome() : page === "search" ? renderDoctorDirectory() : page === "activities" ? renderActivities() : page === "medicines" ? renderMedicines() : renderAccount()}</main>
+    <main>{page === "home" ? renderHome() : page === "search" ? renderDoctorDirectory() : page === "activities" ? renderActivities() : page === "medicines" ? renderMedicines() : page === "workspace" ? renderWorkspace() : renderAccount()}</main>
     <footer className="site-footer"><Brand/><p>Better access. Healthier communities.</p><span>Healthcare information is not a substitute for professional medical advice.</span></footer>
     <nav className="bottom-nav" aria-label="Main navigation">{navItems.map(item=>{const Icon=item.icon;const active=(item.id==="search" && page==="search") || (item.id==="activities" && page==="activities") || (item.id==="account" && page==="account") || (item.id==="home" && ["home","medicines"].includes(page));return <button key={item.id} className={active?"nav-item active":"nav-item"} onClick={()=>setPage(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}</nav>
-    {formType && <div className="modal-backdrop" onClick={()=>setFormType("")}><section className="request-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">HEALTHREACHCARE REQUEST</div><h2>{formType==="appointment"?"Request an appointment":formType==="homecare"?"Request home care":"Prescription enquiry"}</h2></div><button className="icon-button" aria-label="Close" onClick={()=>setFormType("")}><X/></button></div><p className="muted">Enter your details to submit a request. You must be signed in and Firestore security rules must allow the request.</p><form onSubmit={submitForm}><label>Full name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></label><label>Phone number<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="e.g. 082 123 4567"/></label><label>Town or suburb<input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Where do you need care?"/></label><label>{formType==="prescription"?"Prescription details (do not include sensitive information here)":"How can we help?"}<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})} placeholder="Briefly describe what you need" rows={3}/></label><div className="inline-message"><ShieldCheck size={17}/><span>Do not use this form for emergencies or include sensitive medical records. Prescription file uploads are not enabled here.</span></div><button className="button button-primary full" type="submit">Review request <ArrowRight size={16}/></button></form></section></div>}
+    {formType && <div className="modal-backdrop" onClick={()=>setFormType("")}><section className="request-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">HEALTHREACHCARE REQUEST</div><h2>{formType==="appointment"?"Request an appointment":formType==="homecare"?"Request home care":formType==="medicine"?"Medicine order request":"Prescription enquiry"}</h2></div><button className="icon-button" aria-label="Close" onClick={()=>setFormType("")}><X/></button></div><p className="muted">Enter your details to submit a request. You must be signed in and Firestore security rules must allow the request.</p><form onSubmit={submitForm}><label>Full name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></label><label>Phone number<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="e.g. 082 123 4567"/></label><label>Town or suburb<input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Where do you need care?"/></label><label>{formType==="prescription"?"Prescription details (do not include sensitive information here)":formType==="medicine"?"Medicine name or order details (a pharmacy must confirm availability and price)":"How can we help?"}<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})} placeholder="Briefly describe what you need" rows={3}/></label><div className="inline-message"><ShieldCheck size={17}/><span>Do not use this form for emergencies or include sensitive medical records. Prescription file uploads are not enabled here.</span></div><button className="button button-primary full" type="submit">Review request <ArrowRight size={16}/></button></form></section></div>}
   </div>;
 }
 
