@@ -86,6 +86,25 @@ function App() {
     }, () => setNotificationError("Notifications are temporarily unavailable. Check notification collection permissions."));
   }, [user]);
 
+  useEffect(() => {
+    if (!db || !user) {
+      setServiceRequests([]);
+      setRequestError("");
+      return;
+    }
+    const requestQuery = query(collection(db, "serviceRequests"), where("patientUid", "==", user.uid), limit(30));
+    return onSnapshot(requestQuery, snapshot => {
+      const rows = snapshot.docs.map(d => ({ id:d.id, ...d.data() }));
+      rows.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      setServiceRequests(rows);
+      setRequestError("");
+    }, error => {
+      setRequestError(error?.code === "permission-denied"
+        ? "Your account cannot read request history. Check the serviceRequests Firestore rules."
+        : "Your request history is temporarily unavailable. Please try again later.");
+    });
+  }, [user]);
+
   const filteredDoctors = useMemo(() => doctors.filter(d => {
     const name = String(d.name || d.fullName || [d.firstName,d.lastName].filter(Boolean).join(" ") || "");
     const spec = String(d.specialty || d.specialisation || "");
@@ -198,7 +217,7 @@ function App() {
     <div className="trust-grid"><div><ShieldCheck/><strong>Verified professionals</strong><p>Practitioner listings are filtered for verification.</p></div><div><Clock3/><strong>Convenient access</strong><p>Explore care services from one place.</p></div><div><HeartPulse/><strong>Care around you</strong><p>Designed for patients and communities across South Africa.</p></div></div>
   </section>;
 
-  const renderActivities = () => <section className="page-content"><div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Keep track of updates related to your care.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Updates from your HealthReachCare account</p></div></div>{notificationError ? <div className="inline-message"><AlertCircle size={18}/><span>{notificationError}</span></div> : notifications.length ? notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p>{n.createdAt?.toDate && <small>{n.createdAt.toDate().toLocaleString()}</small>}</div></div>) : <div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>When there are updates to your appointments, orders or requests, they will appear here.</p></div>}</div></section>;
+  const renderActivities = () => <section className="page-content"><div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Keep track of your healthcare requests and account updates.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><ClipboardList/></div><div><h2>Your requests</h2><p>Appointment, homecare and prescription requests submitted by you</p></div></div>{!user ? <div className="inline-message"><AlertCircle size={18}/><span>Sign in to view requests linked to your account.</span><button className="text-button" onClick={()=>setPage("account")}>Sign in <ArrowRight size={14}/></button></div> : requestError ? <div className="inline-message"><AlertCircle size={18}/><span>{requestError}</span></div> : serviceRequests.length ? serviceRequests.map(r=><div className="notification-item" key={r.id}><span className="notification-dot"/><div><strong>{({appointment:"Doctor appointment",homecare:"Homecare",prescription:"Prescription enquiry",medicine:"Medicine order"})[r.serviceType] || "Healthcare request"}</strong><p>Status: {String(r.status || "pending").replaceAll("_"," ")}</p>{r.createdAt?.toDate && <small>{r.createdAt.toDate().toLocaleString()}</small>}</div></div>) : <div className="empty-state"><ClipboardList size={26}/><h3>No requests yet</h3><p>Requests you submit will appear here once they are saved to your account.</p></div>}</div><div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Updates from your HealthReachCare account</p></div></div>{notificationError ? <div className="inline-message"><AlertCircle size={18}/><span>{notificationError}</span></div> : notifications.length ? notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p>{n.createdAt?.toDate && <small>{n.createdAt.toDate().toLocaleString()}</small>}</div></div>) : <div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>When there are updates to your appointments, orders or requests, they will appear here.</p></div>}</div></section>;
 
   const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div>{!db ? <div className="inline-message"><AlertCircle size={18}/><span>Firebase is not configured yet, so stock and medicine availability cannot be loaded. We won’t show invented products or prices.</span></div> : <div className="inline-message"><RefreshCw size={18}/><span>The catalogue connection needs the approved medicines collection and pharmacy access rules before ordering can be enabled.</span></div>}<button className="button button-primary" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
 
