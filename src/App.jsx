@@ -55,6 +55,7 @@ function App() {
   const [providerAccounts, setProviderAccounts] = useState([]);
   const [assignmentChoices, setAssignmentChoices] = useState({});
   const [reminders, setReminders] = useState([]);
+  const [reminderLoadedFor, setReminderLoadedFor] = useState("");
   const [reminderForm, setReminderForm] = useState({title:"",person:"Me",when:"",repeatDaily:false});
   const [reminderMessage, setReminderMessage] = useState("");
   const [expandedRequestId, setExpandedRequestId] = useState("");
@@ -65,15 +66,20 @@ function App() {
   const [chatSending, setChatSending] = useState(false);
 
   useEffect(() => {
+    const owner = user?.uid || "guest";
+    setReminderLoadedFor("");
     try {
-      const saved = JSON.parse(window.localStorage.getItem("hrc-reminders-v1") || "[]");
+      const saved = JSON.parse(window.localStorage.getItem("hrc-reminders-v1:" + owner) || "[]");
       setReminders(Array.isArray(saved) ? saved : []);
     } catch { setReminders([]); }
-  }, []);
+    setReminderLoadedFor(owner);
+  }, [user?.uid]);
 
   useEffect(() => {
-    try { window.localStorage.setItem("hrc-reminders-v1", JSON.stringify(reminders)); } catch {}
-  }, [reminders]);
+    const owner = user?.uid || "guest";
+    if (reminderLoadedFor !== owner) return;
+    try { window.localStorage.setItem("hrc-reminders-v1:" + owner, JSON.stringify(reminders)); } catch {}
+  }, [reminders, user?.uid, reminderLoadedFor]);
 
   useEffect(() => {
     const checkReminders = () => {
@@ -86,6 +92,18 @@ function App() {
           try {
             if ("Notification" in window && Notification.permission === "granted") new Notification("HealthReachCare reminder", { body: item.title + (item.person ? " · " + item.person : ""), tag: "hrc-reminder-" + item.id });
             if ("vibrate" in navigator) navigator.vibrate([250, 120, 250]);
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (AudioContextClass) {
+              const audioContext = new AudioContextClass();
+              const oscillator = audioContext.createOscillator();
+              const gain = audioContext.createGain();
+              oscillator.type = "sine";
+              oscillator.frequency.value = 880;
+              gain.gain.value = 0.12;
+              oscillator.connect(gain); gain.connect(audioContext.destination);
+              oscillator.start(); oscillator.stop(audioContext.currentTime + 0.7);
+              oscillator.onended = () => audioContext.close();
+            }
             setReminderMessage("Reminder: " + item.title + (item.person ? " · " + item.person : ""));
           } catch {}
           if (item.repeatDaily) {
