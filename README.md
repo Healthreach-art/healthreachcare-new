@@ -25,7 +25,9 @@ Configure and test Firestore security rules before production. Never make patien
 
 ## Honest integration status
 
-The patient-facing UI includes home, doctor search/filtering, activity/notification states, medicine catalogue setup messaging, and request-form UI. The appointment, home-care and prescription forms currently **do not submit or save requests**. A secure backend workflow, authorization rules, pharmacy inventory connection, and end-to-end acceptance testing are still required before accepting real requests or payments. Medicine listings are not fabricated; the app shows setup messaging until the real catalogue is wired.
+The patient-facing UI includes home, doctor search/filtering, activity/notification states, medicine catalogue setup messaging, and request forms. Email/password sign-up and sign-in are implemented using Firebase Authentication. Signed-in patients can submit appointment, homecare, and prescription-enquiry requests to the `serviceRequests` Firestore collection; the Activities page reads back requests owned by the signed-in user. The app reports Firebase/rules errors instead of showing a false success when a request cannot be saved.
+
+The `firestore.rules` file provides a baseline: public reads are limited to explicitly verified doctor records, notification reads are scoped to the signed-in user, patient requests can only be created for the authenticated patient, and request reads are limited to the patient, an explicitly assigned provider, or an admin role in `user_roles/{uid}`. These rules have **not yet been deployed or tested against the intended Firebase project**. The repository does not yet include complete doctor, pharmacy, and homecare provider workspaces, a live pharmacy inventory/order fulfilment flow, a production payment integration, or end-to-end acceptance tests. Medicine listings are not fabricated; the app shows setup messaging until the real catalogue is connected. Do not accept real clinical requests or payments until Firebase is configured, rules are deployed and tested, and provider workflows are completed.
 
 ## Deployment
 
