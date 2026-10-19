@@ -87,7 +87,8 @@ service cloud.firestore {
             .hasOnly(['status', 'updatedAt', 'providerNotes'])
           && request.resource.data.status in [
             'pending', 'accepted', 'confirmed', 'in_progress',
-            'awaiting_patient', 'completed', 'rejected', 'cancelled'
+            'awaiting_patient', 'preparing', 'ready_for_pickup',
+            'out_for_delivery', 'completed', 'rejected', 'cancelled'
           ]);
 
       allow delete: if isAdmin();
