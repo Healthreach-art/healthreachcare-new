@@ -138,7 +138,7 @@ function App() {
     setProfileBusy(true);
     try {
       await updateProfile(auth.currentUser,{displayName:profileName.trim()});
-      setUser({...auth.currentUser,displayName:profileName.trim()});
+      setUser({uid:auth.currentUser.uid,email:auth.currentUser.email,displayName:profileName.trim()});
       setNotice("Your profile name has been updated.");
     } catch { setNotice("We could not update your profile. Please try again."); }
     finally { setProfileBusy(false); }
