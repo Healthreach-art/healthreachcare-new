@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role in ['admin', 'super_admin'];
+    }
+
+    function isAssignedProvider() {
+      return signedIn() && resource.data.assignedProviderId == request.auth.uid;
+    }
+
+    match /doctors/{doctorId} {
+      // Public directory only exposes practitioners explicitly marked verified.
+      allow get, list: if resource.data.verified == true
+        || resource.data.isVerified == true
+        || resource.data.verificationStatus == 'verified';
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      // Notifications should be written by trusted server-side workflows.
+      allow write: if false;
+    }
+
+    match /user_roles/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /serviceRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.patientUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.serviceType in ['appointment', 'homecare', 'prescription', 'medicine']
+        && request.resource.data.keys().hasAll([
+          'serviceType', 'status', 'patientUid', 'patientName',
+          'patientEmail', 'phone', 'location', 'details', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'serviceType', 'status', 'patientUid', 'patientName',
+          'patientEmail', 'phone', 'location', 'details',
+          'createdAt', 'updatedAt'
+        ]);
+
+      allow get, list: if signedIn()
+        && (resource.data.patientUid == request.auth.uid || isAssignedProvider() || isAdmin());
+
+      // Providers can update only requests explicitly assigned to their own UID.
+      // Assignment and financial changes must be performed by a trusted admin/server workflow.
+      allow update: if isAdmin()
+        || (isAssignedProvider()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'updatedAt', 'providerNotes'])
+          && request.resource.data.status in [
+            'pending', 'accepted', 'confirmed', 'in_progress',
+            'awaiting_patient', 'completed', 'rejected', 'cancelled'
+          ]);
+
+      allow delete: if isAdmin();
+    }
+
+    // Default deny: patient records and other collections require explicit rules.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
