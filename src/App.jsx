@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
 import { addDoc, collection, doc, onSnapshot, query, orderBy, limit, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
@@ -27,6 +27,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [serviceRequests, setServiceRequests] = useState([]);
+  const previousRequestStatuses = useRef(null);
   const [requestError, setRequestError] = useState("");
   const [notificationError, setNotificationError] = useState("");
   const [doctors, setDoctors] = useState([]);
@@ -279,6 +280,7 @@ function App() {
   useEffect(() => {
     if (!db || !user) {
       setServiceRequests([]);
+      previousRequestStatuses.current = null;
       setRequestError("");
       return;
     }
@@ -286,6 +288,26 @@ function App() {
     return onSnapshot(requestQuery, snapshot => {
       const rows = snapshot.docs.map(d => ({ id:d.id, ...d.data() }));
       rows.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      const nextStatuses = Object.fromEntries(rows.map(item=>[item.id,item.status||"pending"]));
+      const previous = previousRequestStatuses.current;
+      if (previous && "Notification" in window && Notification.permission === "granted") {
+        rows.forEach(item => {
+          const status = item.status || "pending";
+          if (previous[item.id] && previous[item.id] !== status) {
+            try {
+              new Notification("HealthReachCare service update", {body:"Your service status has changed to " + status.replaceAll("_"," ") + ".", tag:"hrc-service-"+item.id});
+              if ("vibrate" in navigator) navigator.vibrate([180,80,180]);
+              const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+              if (AudioContextClass) {
+                const ctx = new AudioContextClass(); const oscillator = ctx.createOscillator(); const gain = ctx.createGain();
+                oscillator.frequency.value = 740; gain.gain.value = 0.08; oscillator.connect(gain); gain.connect(ctx.destination);
+                oscillator.start(); oscillator.stop(ctx.currentTime+0.35); oscillator.onended=()=>ctx.close();
+              }
+            } catch {}
+          }
+        });
+      }
+      previousRequestStatuses.current = nextStatuses;
       setServiceRequests(rows);
       setRequestError("");
     }, error => {
