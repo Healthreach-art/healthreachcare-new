@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
 import { addDoc, collection, doc, onSnapshot, query, orderBy, limit, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import {
-  Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
+  Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight, AlarmClock, Siren, Send,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Menu, Pill, Search,
   ShieldCheck, Stethoscope, Truck, UserRound, Users, Video, Phone, RefreshCw,
   Upload, House, MessageCircle, AlertCircle, X
@@ -53,6 +53,55 @@ function App() {
   const [savingRequestId, setSavingRequestId] = useState("");
   const [providerAccounts, setProviderAccounts] = useState([]);
   const [assignmentChoices, setAssignmentChoices] = useState({});
+  const [reminders, setReminders] = useState([]);
+  const [reminderForm, setReminderForm] = useState({title:"",person:"Me",when:"",repeatDaily:false});
+  const [reminderMessage, setReminderMessage] = useState("");
+  const [expandedRequestId, setExpandedRequestId] = useState("");
+  const [chatRequestId, setChatRequestId] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatError, setChatError] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("hrc-reminders-v1") || "[]");
+      setReminders(Array.isArray(saved) ? saved : []);
+    } catch { setReminders([]); }
+  }, []);
+
+  useEffect(() => {
+    try { window.localStorage.setItem("hrc-reminders-v1", JSON.stringify(reminders)); } catch {}
+  }, [reminders]);
+
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = Date.now();
+      setReminders(current => {
+        let changed = false;
+        const next = current.map(item => {
+          if (!item.enabled || !item.when || new Date(item.when).getTime() > now || (item.lastFiredAt && now - item.lastFiredAt < 55000)) return item;
+          changed = true;
+          try {
+            if ("Notification" in window && Notification.permission === "granted") new Notification("HealthReachCare reminder", { body: item.title + (item.person ? " · " + item.person : ""), tag: "hrc-reminder-" + item.id });
+            if ("vibrate" in navigator) navigator.vibrate([250, 120, 250]);
+            setReminderMessage("Reminder: " + item.title + (item.person ? " · " + item.person : ""));
+          } catch {}
+          if (item.repeatDaily) {
+            const nextWhen = new Date(item.when);
+            nextWhen.setDate(nextWhen.getDate() + 1);
+            while (nextWhen.getTime() <= now) nextWhen.setDate(nextWhen.getDate() + 1);
+            return { ...item, when: nextWhen.toISOString().slice(0,16), lastFiredAt: now };
+          }
+          return { ...item, enabled: false, lastFiredAt: now };
+        });
+        return changed ? next : current;
+      });
+    };
+    checkReminders();
+    const id = window.setInterval(checkReminders, 15000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!firebaseConfigured || !auth) return;
@@ -223,6 +272,29 @@ function App() {
         : "Your request history is temporarily unavailable. Please try again later.");
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!db || !user || !chatRequestId) { setChatMessages([]); return; }
+    const request = serviceRequests.find(item => item.id === chatRequestId);
+    const allowed = request && request.assignedProviderId && ["accepted","confirmed","in_progress","preparing","ready_for_pickup","out_for_delivery","awaiting_patient"].includes(request.status);
+    if (!allowed) { setChatMessages([]); setChatError("Messaging is available only while your assigned service is in progress."); return; }
+    return onSnapshot(query(collection(db,"serviceRequestMessages"),where("requestId","==",chatRequestId),limit(100)), snapshot => {
+      const rows = snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdAt?.toMillis?.()||0)-(b.createdAt?.toMillis?.()||0));
+      setChatMessages(rows); setChatError("");
+    }, error => setChatError(error?.code==="permission-denied" ? "This conversation is restricted to you and your assigned provider while the service is active." : "Messages could not be loaded."));
+  }, [user, chatRequestId, serviceRequests]);
+
+  const sendChatMessage = async event => {
+    event.preventDefault();
+    const request = serviceRequests.find(item=>item.id===chatRequestId);
+    if(!db||!user||!request||!request.assignedProviderId||!["accepted","confirmed","in_progress","preparing","ready_for_pickup","out_for_delivery","awaiting_patient"].includes(request.status)||!chatDraft.trim()) return;
+    setChatSending(true); setChatError("");
+    try {
+      await addDoc(collection(db,"serviceRequestMessages"), {requestId:request.id,patientUid:user.uid,providerUid:request.assignedProviderId,senderUid:user.uid,text:chatDraft.trim().slice(0,2000),createdAt:serverTimestamp()});
+      setChatDraft("");
+    } catch { setChatError("Message was not sent. Please try again."); }
+    finally { setChatSending(false); }
+  };
 
   const filteredDoctors = useMemo(() => doctors.filter(d => {
     const name = String(d.name || d.fullName || [d.firstName,d.lastName].filter(Boolean).join(" ") || "");
