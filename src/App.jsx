@@ -63,7 +63,7 @@ const activityStages = item => {
     const serviceConfirmed = ["confirmed", "completed"].includes(status);
     return makeStages([
       ["Request submitted", submitted, ["pending", "requested", "awaiting_provider_review"].includes(status)],
-      ["Payment verified", paymentVerified, !paymentVerified && !["cancelled", "canceled", "declined", "rejected"].includes(status)],
+      ["Payment verified", paymentVerified, !paymentVerified && ["awaiting_payment", "payment_pending", "pending_gateway"].includes(status)],
       ["Provider response", providerResponded, status === "accepted"],
       ["Service confirmed", serviceConfirmed, status === "confirmed"],
       ["Service completed", status === "completed", false]
