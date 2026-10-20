@@ -135,7 +135,7 @@ export function recordTestPayment(orderId, method) {
 
 export function transitionTestOrder(orderId, nextStatus) {
   const allowed = {
-    awaiting_payment: [],
+    awaiting_payment: ["cancelled"],
     awaiting_pharmacy: ["accepted", "cancelled"],
     accepted: ["preparing", "cancelled"],
     preparing: ["ready_for_delivery", "ready_for_pickup"],
@@ -165,10 +165,18 @@ export function transitionTestOrder(orderId, nextStatus) {
     order.status = nextStatus;
     order.updatedAt = new Date().toISOString();
     order.statusHistory = [...(Array.isArray(order.statusHistory) ? order.statusHistory : [{ status: "awaiting_payment", at: order.createdAt, testOnly: true }]), { status: nextStatus, at: order.updatedAt, testOnly: true }];
+    if (nextStatus === "cancelled") {
+      order.cancellationReason = "Cancelled by patient in test preview";
+      order.cancellationAt = order.updatedAt;
+      order.refundStatus = order.paymentStatus === "test_authorized" ? "requires_admin_review" : "not_applicable";
+    }
     return { value: order };
   });
   if (!result?.error && result?.value) {
-    try { recordCareEvent({ type: "test_order_status_changed", title: "Test order updated", message: "Order status changed to " + nextStatus.replace(/_/g, " ") + ". Local test data only.", orderId, at: result.value.updatedAt }); } catch { /* Preview notifications cannot block status changes. */ }
+    const message = nextStatus === "cancelled"
+      ? (result.value.refundStatus === "requires_admin_review" ? "Test cancellation recorded. Refund requires admin review and is not marked complete." : "Test cancellation recorded. No real payment or refund occurred.")
+      : "Order status changed to " + nextStatus.replace(/_/g, " ") + ". Local test data only.";
+    try { recordCareEvent({ type: nextStatus === "cancelled" ? "test_order_cancelled" : "test_order_status_changed", title: nextStatus === "cancelled" ? "Test order cancelled" : "Test order updated", message, orderId, at: result.value.updatedAt }); } catch { /* Preview notifications cannot block status changes. */ }
   }
   return result;
 }
@@ -199,7 +207,7 @@ export function useTestWorkflow() {
 }
 
 export function transitionTestBooking(bookingId, nextStatus) {
-  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: [], declined: [] };
+  const allowed = { awaiting_provider_review: ["accepted", "declined", "cancelled"], accepted: ["cancelled"], declined: [], cancelled: [] };
   return updateWorkflow(draft => {
     const booking = draft.bookings.find(item => item.id === bookingId);
     if (!booking) return { error: "Test request not found. Refresh and try again." };
@@ -210,10 +218,15 @@ export function transitionTestBooking(bookingId, nextStatus) {
     booking.status = nextStatus;
     booking.updatedAt = new Date().toISOString();
     booking.statusHistory = [...(Array.isArray(booking.statusHistory) ? booking.statusHistory : [{ status: "awaiting_provider_review", at: booking.createdAt, testOnly: true }]), { status: nextStatus, at: booking.updatedAt, testOnly: true }];
+    if (nextStatus === "cancelled") {
+      booking.cancellationReason = "Cancelled by patient in test preview";
+      booking.cancellationAt = booking.updatedAt;
+    }
     return { value: booking };
   });
   if (!result?.error && result?.value) {
-    try { recordCareEvent({ type: "test_booking_status_changed", title: "Test care request updated", message: "Request status changed to " + nextStatus.replace(/_/g, " ") + ". Local test data only.", bookingId, at: result.value.updatedAt }); } catch { /* Preview notifications cannot block status changes. */ }
+    const message = nextStatus === "cancelled" ? "Test cancellation recorded. No real service or refund was processed." : "Request status changed to " + nextStatus.replace(/_/g, " ") + ". Local test data only.";
+    try { recordCareEvent({ type: nextStatus === "cancelled" ? "test_booking_cancelled" : "test_booking_status_changed", title: nextStatus === "cancelled" ? "Test care request cancelled" : "Test care request updated", message, bookingId, at: result.value.updatedAt }); } catch { /* Preview notifications cannot block status changes. */ }
   }
   return result;
 }
