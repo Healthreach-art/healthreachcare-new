@@ -8,7 +8,94 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
+import { useTestWorkflow } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
+
+
+const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
+const readLegacyBookings = () => {
+  try { const value = JSON.parse(localStorage.getItem(LEGACY_BOOKINGS_KEY) || "[]"); return Array.isArray(value) ? value : []; }
+  catch { return []; }
+};
+const activityStatus = item => String(item.status || item.requestStatus || "pending").toLowerCase();
+const isClosedActivity = item => ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
+const activityKind = item => item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
+const activityProviderLabel = item => {
+  const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
+  const medication = Boolean(item.items) || item.kind === "medication";
+  if (homecare) return item.coordinatorName || item.homecareCoordinatorName || "Central homecare coordination team (preview)";
+  if (medication) return item.pharmacyName || item.providerName || "Pharmacy not assigned in preview";
+  if (item.driverName || item.driverId) return item.driverName || "Delivery driver assigned (preview)";
+  return item.doctorName || item.providerName || "Doctor not assigned in preview";
+};
+const activityDate = value => {
+  if (!value) return "Date not set";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) || parsed.getFullYear() < 2000 || parsed.getFullYear() > 2100 ? "Date not set" : parsed.toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" });
+};
+const hasInvalidPreviewDate = item => {
+  const value = item.requestedDate || item.date;
+  if (!value) return false;
+  const year = Number(String(value).slice(0, 4));
+  return !Number.isFinite(year) || year < 2000 || year > 2100;
+};
+const getActivityRecords = workflow => {
+  const legacy = readLegacyBookings().map(item => ({ ...item, source: "legacy-test" }));
+  const orders = (workflow.orders || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "medication", source: "workflow-test" }));
+  const bookings = (workflow.bookings || []).filter(item => item.testOnly).map(item => ({ ...item, kind: item.kind || (item.serviceType?.toLowerCase().includes("home") ? "homecare" : "appointment"), source: "workflow-test" }));
+  // Hide obviously invalid legacy demo dates from the patient UI without deleting browser data.
+  return [...legacy, ...bookings, ...orders]
+    .filter(item => !hasInvalidPreviewDate(item))
+    .sort((a, b) => new Date(b.updatedAt || b.providerResponseAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.providerResponseAt || a.createdAt || 0).getTime());
+};
+const activityStages = item => {
+  const status = activityStatus(item);
+  const closed = ["declined", "rejected", "cancelled", "canceled"].includes(status);
+  const medication = Boolean(item.items) || item.kind === "medication";
+  const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
+  const paymentVerified = !item.testOnly && ["paid", "verified", "succeeded"].includes(String(item.paymentStatus || "").toLowerCase());
+  const makeStages = definitions => definitions.map(([label, condition, currentCondition]) => ({
+    label,
+    done: Boolean(condition),
+    current: !closed && Boolean(currentCondition)
+  }));
+  if (medication) {
+    const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const ready = ["ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const out = ["out_for_delivery", "delivered"].includes(status);
+    return makeStages([
+      ["Order submitted", true, status === "awaiting_payment" || status === "awaiting_pharmacy" || status === "pending"],
+      ["Pharmacy review", pharmacyReviewed, status === "awaiting_pharmacy"],
+      ["Payment verified", paymentVerified, ["awaiting_payment", "payment_pending", "pending_gateway"].includes(status)],
+      ["Preparing order", preparing, status === "preparing"],
+      ["Ready / driver assigned", ready, ["ready_for_delivery", "ready_for_pickup"].includes(status)],
+      ["Out for delivery", out, status === "out_for_delivery"],
+      ["Delivered", status === "delivered", false]
+    ]);
+  }
+  if (homecare) {
+    const submitted = ["pending", "requested", "awaiting_provider_review", "accepted", "confirmed", "completed"].includes(status);
+    const providerResponded = ["accepted", "confirmed", "completed"].includes(status);
+    const serviceConfirmed = ["confirmed", "completed"].includes(status);
+    return makeStages([
+      ["Request submitted", submitted, ["pending", "requested", "awaiting_provider_review"].includes(status)],
+      ["Payment verified", paymentVerified, !paymentVerified && ["awaiting_payment", "payment_pending", "pending_gateway"].includes(status)],
+      ["Provider response", providerResponded, status === "accepted"],
+      ["Service confirmed", serviceConfirmed, status === "confirmed"],
+      ["Service completed", status === "completed", false]
+    ]);
+  }
+  const submitted = ["pending", "requested", "awaiting_provider_review", "accepted", "confirmed", "completed"].includes(status);
+  const providerResponded = ["accepted", "confirmed", "completed"].includes(status);
+  const confirmed = ["confirmed", "completed"].includes(status);
+  return makeStages([
+    ["Request submitted", submitted, ["pending", "requested", "awaiting_provider_review"].includes(status)],
+    ["Doctor response", providerResponded, status === "accepted"],
+    ["Appointment confirmed", confirmed, status === "confirmed"],
+    ["Appointment completed", status === "completed", false]
+  ]);
+};
 
 const navItems = [
   { id:"home", label:"Home", icon:Home },
@@ -41,6 +128,10 @@ function App() {
   const [supportForm, setSupportForm] = useState({name:"",email:"",topic:"Care request",message:""});
   const [supportNotice, setSupportNotice] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [activityFilter, setActivityFilter] = useState("all");
+  const workflow = useTestWorkflow();
+  const activities = getActivityRecords(workflow);
+  const latestActiveActivity = activities.find(item => !isClosedActivity(item));
 
   const openForm = (type, extra = {}) => {
     setNotice("");
@@ -108,14 +199,14 @@ function App() {
         <span className="dashboard-panel-icon tracker-icon"><Activity size={20}/></span>
         <div><div className="eyebrow">YOUR CARE JOURNEY</div><h2>Care tracker</h2><p>Follow the progress of your appointments and care requests.</p></div>
       </div>
-      <div className="tracker-layout">
-        <div className="tracker-timeline">
-          <div className="timeline-step"><span className="timeline-dot"><CalendarDays size={17}/></span><div><strong>Request care when you need it</strong><p>Choose a doctor, homecare service or medicine order from the Home screen.</p></div></div>
-          <div className="timeline-step"><span className="timeline-dot muted-dot"><Bell size={17}/></span><div><strong>Check Activities for updates</strong><p>Requests created in this browser appear in Activities while this test preview is in use.</p></div></div>
-          <div className="timeline-step"><span className="timeline-dot muted-dot"><ShieldCheck size={17}/></span><div><strong>Provider and payment connections pending</strong><p>This preview does not contact a real provider or confirm real appointments or payments.</p></div></div>
+      {latestActiveActivity ? <div className="tracker-layout">
+        <div className="tracker-latest-card">
+          <div className="tracker-topline"><div><strong>{activityKind(latestActiveActivity)}</strong><p>{latestActiveActivity.id || "Preview reference"} · {activityDate(latestActiveActivity.requestedDate ? latestActiveActivity.requestedDate + "T" + (latestActiveActivity.requestedTime || "00:00") : latestActiveActivity.createdAt)}</p><small className="tracker-last-update">Last update: {activityDate(latestActiveActivity.updatedAt || latestActiveActivity.providerResponseAt || latestActiveActivity.createdAt)}</small></div><span className="tracker-status">{String(activityStatus(latestActiveActivity)).replace(/_/g," ")}</span></div>
+          <div className="tracker-timeline">{activityStages(latestActiveActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
+          <p className="tracker-preview-note">Preview only. Provider, payment and driver updates are not live.</p>
+          <button className="button button-primary" onClick={()=>{setSelectedActivity(latestActiveActivity);setPage("activities");}}>View request details <ArrowRight size={16}/></button>
         </div>
-        <div className="tracker-map-placeholder"><HeartPulse size={30}/><strong>Your care, in one place</strong><p>Once connected, confirmed requests and their status will be shown here. No live tracking is available in this preview.</p></div>
-      </div>
+      </div> : <div className="tracker-empty-state"><HeartPulse size={28}/><strong>Your care journey starts here</strong><p>Your latest active booking or medication order will appear here.</p><div className="tracker-empty-actions"><button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("doctor-booking")}>Book a doctor <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("homecare-booking")}>Request homecare <ArrowRight size={14}/></button></div></div>}
     </div>
     <div className="dashboard-panel">
       <div className="dashboard-panel-heading recent-heading">
@@ -123,7 +214,7 @@ function App() {
         <div><div className="eyebrow">YOUR LATEST UPDATES</div><h2>Recent activity</h2><p>A quick look at your latest care requests.</p></div>
         <button className="text-button" onClick={() => setPage("activities")}>View activities <ArrowRight size={15}/></button>
       </div>
-      {(() => { let items = []; try { items = JSON.parse(localStorage.getItem("healthreachcare-test-bookings") || "[]"); } catch {} return items.length ? items.slice(0,3).map(item => <div className="notification-item" key={item.id}><span className="notification-dot"/><div><strong>{item.serviceType || "Care request"}</strong><p>{item.requestedDate || "Date not set"} · {item.requestedTime || "Time not set"} · {String(item.status || "pending").replace(/_/g," ")}</p><small>Local test request · {item.providerName || "Provider not assigned"}</small></div></div>) : <div className="dashboard-empty recent-empty"><CalendarDays size={24}/><div><strong>No recent activity yet</strong><p>Your appointments and homecare requests will appear here after you create one.</p></div></div>; })()}
+      {activities.length ? activities.slice(0,3).map(item => <button type="button" className="notification-item recent-activity-button" key={item.id} onClick={()=>{setSelectedActivity(item);setPage("activities");}}><span className="notification-dot"/><span><strong>{activityKind(item)}</strong><p>{item.requestedDate ? activityDate(item.requestedDate + "T" + (item.requestedTime || "00:00")) : activityDate(item.createdAt)} · {String(activityStatus(item)).replace(/_/g," ")}</p><small>Test preview · {activityProviderLabel(item)}</small></span><ChevronRight size={16}/></button>) : <div className="dashboard-empty recent-empty"><CalendarDays size={24}/><div><strong>No recent activity yet</strong><p>Your appointments and homecare requests will appear here after you create one.</p></div></div>}
     </div>
 
   </section>;
@@ -154,8 +245,34 @@ function App() {
     </div>
   </section>;
 
-  const renderActivities = () => { let careRequests=[]; try { careRequests=JSON.parse(localStorage.getItem("healthreachcare-test-bookings")||"[]"); } catch {} const progressFor=status=>{const v=String(status||"pending").toLowerCase().replace(/_/g," ");return /complete|fulfilled|delivered|closed/.test(v)?{label:"Completed",step:4}:/progress|prepar|assigned|accepted|confirm/.test(v)?{label:"In progress",step:2}:{label:"Request received",step:1};}; return <section className="page-content"><div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Select a request to review its details and preview progress.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><CalendarDays/></div><div><h2>Care requests</h2><p>Requests saved in this browser preview</p></div></div>{careRequests.length?careRequests.map(item=>{const progress=progressFor(item.status);const homecare=/home.?care/i.test(item.serviceType||"");const provider=homecare?"Central homecare coordination team":(item.providerName||(/pharmacy|medicine|medication/i.test(item.serviceType||"")?"Pharmacy assignment pending":"Doctor or service provider assignment pending"));return <button type="button" key={item.id} className="notification-item" onClick={()=>setSelectedActivity(item)} style={{width:"100%",textAlign:"left",background:"transparent",border:0,cursor:"pointer",font:"inherit",padding:"16px 0"}}><span className="notification-dot"/><span style={{flex:1,minWidth:0}}><strong>{item.serviceType||"Care request"}</strong><p>{item.requestedDate||"Date not set"} · {item.requestedTime||"Time not set"}</p><small>{progress.label} · {provider}</small><span style={{display:"block",height:5,background:"#e4e9e7",borderRadius:8,marginTop:10,overflow:"hidden"}}><span style={{display:"block",height:"100%",width:(progress.step/4*100)+"%",background:"#21865a",borderRadius:8}}/></span></span><ChevronRight size={18}/></button>}) : <div className="empty-state"><CalendarDays size={26}/><h3>No care requests yet</h3><p>Your homecare and appointment requests will appear here after you create one.</p></div>}</div>{selectedActivity&&<div className="panel"><div className="panel-heading"><div className="panel-icon"><Activity/></div><div><h2>{selectedActivity.serviceType||"Care request"} details</h2><p>Request progress · preview only</p></div><button type="button" className="icon-button" aria-label="Close request details" onClick={()=>setSelectedActivity(null)}><X size={18}/></button></div><div className="account-setting-row"><div><strong>Current status</strong><p className="muted">{progressFor(selectedActivity.status).label}</p></div><span className="account-status">Preview</span></div><div className="account-setting-row"><div><strong>Preferred date and time</strong><p className="muted">{selectedActivity.requestedDate||"Not set"} · {selectedActivity.requestedTime||"Not set"}</p></div></div><div className="account-setting-row"><div><strong>Coordinator / provider</strong><p className="muted">{/home.?care/i.test(selectedActivity.serviceType||"")?"One central homecare coordination team oversees homecare requests; a named coordinator is not connected in this preview.":(selectedActivity.providerName||"A specific doctor or pharmacy has not been assigned in this preview.")}</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>This is a locally stored test request. Live provider updates and direct provider messaging are not connected.</span></div><a className="button button-primary" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+(selectedActivity.serviceType||"Care request"))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+" ("+(selectedActivity.serviceType||"Care request")+"). Please route this to the appropriate coordinator/provider.")}><MessageCircle size={16}/> Contact support about this request</a></div>}<div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Account updates</p></div></div>{notificationError?<div className="inline-message"><AlertCircle size={18}/><span>Notifications will appear here when connected.</span></div>:notifications.length?notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title||n.subject||"HealthReachCare update"}</strong><p>{n.message||n.body||"You have a new update."}</p></div></div>):<div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>Updates will appear here when available.</p></div>}</div></section>; };
-
+  const renderActivities = () => {
+    const filtered = activities.filter(item => {
+      if (activityFilter === "active") return !isClosedActivity(item);
+      if (activityFilter === "past") return ["delivered", "completed"].includes(activityStatus(item));
+      if (activityFilter === "cancelled") return ["cancelled", "canceled", "declined", "rejected"].includes(activityStatus(item));
+      return true;
+    });
+    return <section className="page-content">
+      <div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Your care requests, medication orders and updates.</p>
+      <div className="activity-filters" role="group" aria-label="Filter activities">{[["all","All"],["active","Active"],["past","Past / completed"],["cancelled","Cancelled"]].map(([value,label])=><button type="button" key={value} className={activityFilter===value?"activity-filter active":"activity-filter"} onClick={()=>setActivityFilter(value)}>{label}</button>)}</div>
+      <div className="panel"><div className="panel-heading"><div className="panel-icon"><CalendarDays/></div><div><h2>Care history</h2><p>Tap any item to view its full details and progress.</p></div></div>
+        {filtered.length ? <div className="activity-list">{filtered.map(item=><button type="button" className="activity-card" key={item.id} onClick={()=>setSelectedActivity(item)}>
+          <span className="activity-card-icon">{item.items?<Pill/>:activityKind(item)==="Homecare request"?<House/>:activityKind(item)==="Medication order"?<Pill/>:<Stethoscope/>}</span>
+          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{item.providerName || item.doctorName || (item.items ? "Pharmacy assignment not connected" : "Provider not assigned")}</small>{["cancelled","canceled","declined","rejected"].includes(activityStatus(item)) && (item.cancellationReason || item.cancelReason) && <small className="activity-cancellation-reason">Reason: {item.cancellationReason || item.cancelReason}</small>}</span>
+          <span className={"activity-status status-"+activityStatus(item)}>{String(activityStatus(item)).replace(/_/g," ")}</span><ChevronRight size={17}/>
+        </button>)}</div> : <div className="empty-state"><CalendarDays size={27}/><h3>{activityFilter==="cancelled"?"No cancelled activities":activityFilter==="past"?"No completed activities":"No activities yet"}</h3><p>Test requests and orders appear here when created in this preview. No real provider is contacted.</p><button className="button button-outline" onClick={()=>setPage("home")}>Browse services</button></div>}
+      </div>
+      <div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Account and care updates</p></div></div>{notificationError?<div className="inline-message"><AlertCircle size={18}/><span>Notifications will appear here when connected.</span></div>:notifications.length?notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title||n.subject||"HealthReachCare update"}</strong><p>{n.message||n.body||"You have a new update."}</p></div></div>):<div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>Updates will appear here when available.</p></div>}</div>
+      {selectedActivity && <div className="modal-backdrop" onClick={()=>setSelectedActivity(null)}><section className="request-modal activity-detail-modal" role="dialog" aria-modal="true" aria-label="Activity details" onClick={e=>e.stopPropagation()}>
+        <div className="modal-head"><div><div className="eyebrow">ACTIVITY DETAILS · TEST PREVIEW</div><h2>{activityKind(selectedActivity)}</h2></div><button type="button" className="icon-button" aria-label="Close activity details" onClick={()=>setSelectedActivity(null)}><X/></button></div>
+        <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Service coordinator / provider",activityProviderLabel(selectedActivity)],["Delivery driver",selectedActivity.driverName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Fixed service price",selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):(typeof selectedActivity.servicePrice==="number"?"R"+selectedActivity.servicePrice.toFixed(2):(typeof selectedActivity.totalAmount==="number"?"R"+selectedActivity.totalAmount.toFixed(2):"Not configured in preview"))],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
+        <h3 className="activity-timeline-title">Progress</h3><div className="tracker-timeline detail-timeline">{activityStages(selectedActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
+        <div className="inline-message"><ShieldCheck size={17}/><span>Test preview only. Provider, payment, pharmacy verification and driver tracking are not live. Do not enter real patient information.</span></div>
+        <a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
+        <button type="button" className="button button-outline full" onClick={()=>setSelectedActivity(null)}>Close details</button>
+      </section></div>}
+    </section>;
+  };
 
   const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>Testing mode is active. Live pharmacy stock is not connected; no invented products or prices are shown.</span></div><button className="button button-primary" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
 
@@ -205,7 +322,7 @@ function App() {
     <header className="topbar"><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><button className="icon-button theme-toggle" aria-label={darkBackground ? "Use light background" : "Use dark background"} title={darkBackground ? "Use light background" : "Use dark background"} onClick={()=>setDarkBackground(value=>!value)}>{darkBackground ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
     {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
 </header>
-    <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "doctor-provider" ? <ProviderWorkspace role="doctor" onBack={()=>setPage("home")}/> : page === "homecare-provider" ? <ProviderWorkspace role="homecare" onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "activities" ? renderActivities() : page === "support" ? renderSupport() : page === "reminders" ? renderReminders() : page === "prescriptions" ? <section className="page-content"><button className="text-button" onClick={()=>setPage("home")}><ArrowRight size={15} className="back-arrow"/> Back to Home</button><div className="eyebrow">PRESCRIPTION MEDICINES</div><h1>Upload Prescription</h1><p className="lead">A prescription is required only for medicines classified as prescription-only or where the selected pharmacy requires it.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Secure prescription submission is not connected yet</h2><p>We will not store medical documents in browser storage or expose them through a public link.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>This repository currently has no connected authenticated server, private file storage, pharmacy-owned access control, audit log or scheduled retention cleanup. Uploading a real prescription is therefore disabled until those safeguards are implemented and tested.</span></div><p className="muted">When enabled, the patient will upload a prescription only when required; the selected pharmacy's authorised staff will review it before dispensing. A booking or order acknowledgement will not count as prescription approval. ID verification will be requested only where necessary; selfies will not be mandatory by default.</p></div></section> : page === "medicines" ? <PatientMedicineShop onBack={() => setPage("home")} /> : renderAccount()}</main>
+    <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "doctor-provider" ? <ProviderWorkspace role="doctor" onBack={()=>setPage("home")}/> : page === "homecare-provider" ? <ProviderWorkspace role="homecare" onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "activities" ? renderActivities() : page === "support" ? renderSupport() : page === "reminders" ? renderReminders() : page === "prescriptions" ? <section className="page-content"><button className="text-button" onClick={()=>setPage("home")}><ArrowRight size={15} className="back-arrow"/> Back to Home</button><div className="eyebrow">PRESCRIPTION MEDICINES</div><h1>Upload Prescription</h1><p className="lead">A prescription is required only for medicines classified as prescription-only or where the selected pharmacy requires it.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Secure prescription submission is not connected yet</h2><p>We will not store medical documents in browser storage or expose them through a public link.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>This repository currently has no connected authenticated server, private file storage, pharmacy-owned access control, audit log or scheduled retention cleanup. Uploading a real prescription is therefore disabled until those safeguards are implemented and tested.</span></div><p className="muted">When enabled, the patient will upload a prescription only when required; the selected pharmacy's authorised staff will review it before dispensing. A booking or order acknowledgement will not count as prescription approval. ID verification will be requested only where necessary; selfies will not be mandatory by default.</p></div></section> : page === "medicines" ? <PatientMedicineShop onBack={() => setPage("home")} onOpenActivities={() => setPage("activities")} /> : renderAccount()}</main>
     
     <nav className="bottom-nav" aria-label="Main navigation">{navItems.map(item=>{const Icon=item.icon;const active=(item.id==="activities" && page==="activities") || (item.id==="account" && page==="account") || (item.id==="home" && ["home","medicines","reminders","prescriptions"].includes(page));return <button key={item.id} className={active?"nav-item active":"nav-item"} onClick={()=>setPage(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}</nav>
     {formType && <div className="modal-backdrop" onClick={()=>setFormType("")}><section className="request-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">HEALTHREACHCARE REQUEST</div><h2>{formType==="appointment"?"Request an appointment":formType==="homecare"?"Request home care":"Prescription enquiry"}</h2></div><button className="icon-button" aria-label="Close" onClick={()=>setFormType("")}><X/></button></div>{notice && <div className="inline-message"><AlertCircle size={18}/><span>{notice}</span></div>}<p className="muted">{formType==="appointment" ? "Request a time with a verified practitioner. Your request remains pending until the provider confirms availability." : formType==="homecare" ? "Tell us what care you need and when. A provider must review and accept your request before it is confirmed." : "Send a prescription enquiry for the HealthReachCare team to review."}</p><form onSubmit={submitForm}><label>Full name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></label><label>Phone number<input required type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="e.g. 082 123 4567"/></label><label>{formType==="homecare"?"Care address / town or suburb":"Town or suburb"}<input required value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Where do you need care?"/></label>{formType!=="prescription" && <><label>{formType==="appointment"?"Preferred consultation":"Home-care service"}<select required value={form.service} onChange={e=>setForm({...form,service:e.target.value})}><option value="">Choose an option</option>{(formType==="appointment"?["In-Person","Video","Phone"]:["Nursing care","Personal care","Post-operative care","Elder care","Wound care","Other"]).map(option=><option key={option} value={option}>{option}</option>)}</select></label><div className="filter-row"><label>Preferred date<input required type="date" min={new Date().toISOString().slice(0,10)} value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label>Preferred time<input required type="time" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/></label></div>{formType==="homecare" && <label>Requested duration<select value={form.duration} onChange={e=>setForm({...form,duration:e.target.value})}>{["1 hour","2 hours","4 hours","8 hours","Overnight","Ongoing / to be discussed"].map(option=><option key={option}>{option}</option>)}</select></label>}</>}{formType==="appointment" && form.doctorName && <div className="inline-message"><Stethoscope size={17}/><span>Practitioner selected: <strong>{form.doctorName}</strong></span></div>}<label>{formType==="prescription"?"Prescription enquiry (do not include sensitive medical information)":"Additional details"}<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})} placeholder="Briefly describe what you need" rows={3}/></label><div className="inline-message"><ShieldCheck size={17}/><span>Test mode saves this enquiry in this browser only. It is not sent to a provider and no payment is taken. Do not use this form for emergencies or enter sensitive medical records.</span></div><button className="button button-primary full" type="submit" disabled={submittingRequest}>{submittingRequest ? "Sending request…" : "Save test enquiry"} <ArrowRight size={16}/></button></form></section></div>}
