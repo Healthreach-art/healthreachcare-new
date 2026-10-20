@@ -68,3 +68,30 @@
 .driver-support-form textarea{box-sizing:border-box;width:100%;max-width:100%;resize:vertical;border:1px solid #dce7e1;border-radius:10px;padding:12px;background:#fff;color:#193a30;font:inherit;font-weight:500;line-height:1.6}
 .driver-support-form input:focus,.driver-support-form textarea:focus,.driver-support-form select:focus{outline:2px solid #0b806230;border-color:#0b8062}
 @media(max-width:600px){.driver-account-subtabs{display:grid;grid-template-columns:1fr}.driver-account-subtabs button{width:100%;text-align:left}.driver-security-status{flex-wrap:wrap}.driver-security-status .driver-preview-chip{margin-left:33px}.driver-support-topics{grid-template-columns:1fr}.driver-period-filter{align-items:flex-start;flex-direction:column}.driver-period-filter select{width:100%}}
+
+
+/* Prescription intake and pharmacy review simulation */
+.prescription-sandbox-page{display:grid;gap:18px}
+.prescription-sandbox-banner,.prescription-production-note,.prescription-consent{display:flex;align-items:flex-start;gap:12px;padding:15px;border:1px solid #d5e9df;background:#f4faf6;border-radius:13px;color:#177457}
+.prescription-sandbox-banner strong,.prescription-production-note strong{display:block;color:#205340;font-size:12px}
+.prescription-sandbox-banner p,.prescription-production-note p{margin:5px 0 0;color:#61796e;font-size:11px;line-height:1.7}
+.prescription-intake-form{display:grid;gap:16px}
+.prescription-intake-form>label{display:grid;gap:7px;color:#49665a;font-size:11px;font-weight:750}
+.prescription-intake-form input:not([type=file]),.prescription-intake-form textarea{box-sizing:border-box;width:100%;min-width:0;padding:12px;border:1px solid #dce7e1;border-radius:10px;background:#fff;color:#193a30;font:inherit;font-weight:500}
+.prescription-intake-form input[type=file]{box-sizing:border-box;width:100%;max-width:100%;padding:12px;border:1px dashed #b9d4c7;border-radius:10px;background:#f8fbf9;font:inherit;font-size:11px}
+.prescription-intake-form label small{font-size:10px;font-weight:500;color:#778780;line-height:1.6}
+.prescription-file-preview,.prescription-record-head{display:flex;align-items:center;gap:12px;min-width:0}
+.prescription-file-preview{padding:12px;border:1px solid #e1ece6;border-radius:11px;background:#f9fcfa;color:#177457}
+.prescription-file-preview>div,.prescription-record-head>div{display:grid;gap:5px;min-width:0;flex:1}
+.prescription-file-preview strong,.prescription-record-head strong{font-size:11px;overflow-wrap:anywhere;color:#29463c}
+.prescription-file-preview small,.prescription-record-head small{font-size:10px;color:#778780;line-height:1.5}
+.prescription-consent{font-size:10px;line-height:1.65;color:#657a70}
+.prescription-record-list{display:grid;gap:0}
+.prescription-record{padding:16px 0;border-top:1px solid var(--border,#e2eae6)}
+.prescription-file-icon{display:grid;place-items:center;width:40px;height:40px;flex-shrink:0;border-radius:12px;background:#eaf6f0;color:#087f62}
+.prescription-record-meta{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0 52px}
+.prescription-record-meta span{padding:6px 8px;border-radius:7px;background:#f2f6f4;color:#61766e;font-size:9px;overflow-wrap:anywhere}
+.prescription-production-note{background:#fcfaf3;border-color:#e8e1ca;color:#8a7138}
+.prescription-production-note strong{color:#69552a}
+.prescription-production-note p{color:#80724e}
+@media(max-width:600px){.prescription-record-head{align-items:flex-start;flex-wrap:wrap}.prescription-record-meta{margin-left:0}.prescription-record-head .request-status{margin-left:52px}}

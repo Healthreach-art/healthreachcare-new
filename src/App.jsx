@@ -8,7 +8,8 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
-import { useTestWorkflow } from "./test-workflow.js";
+import PrescriptionSandbox from "./PrescriptionSandbox.jsx";
+import { cancelTestBooking, readWorkflow, simulateTestBookingPayment, useTestWorkflow, SIMULATION_CONFIG } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
 
 
@@ -23,7 +24,7 @@ const activityKind = item => item.items ? "Medication order" : item.kind === "me
 const activityProviderLabel = item => {
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
   const medication = Boolean(item.items) || item.kind === "medication";
-  if (homecare) return item.coordinatorName || item.homecareCoordinatorName || "Central homecare coordination team (preview)";
+  if (homecare) return item.coordinatorName || item.homecareCoordinatorName || item.providerName || "Central homecare coordination team (sandbox)";
   if (medication) return item.pharmacyName || item.providerName || "Pharmacy not assigned in preview";
   if (item.driverName || item.driverId) return item.driverName || "Delivery driver assigned (preview)";
   return item.doctorName || item.providerName || "Doctor not assigned in preview";
@@ -53,7 +54,7 @@ const activityStages = item => {
   const closed = ["declined", "rejected", "cancelled", "canceled"].includes(status);
   const medication = Boolean(item.items) || item.kind === "medication";
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
-  const paymentVerified = !item.testOnly && ["paid", "verified", "succeeded"].includes(String(item.paymentStatus || "").toLowerCase());
+  const paymentVerified = ["paid", "verified", "succeeded", "test_authorized"].includes(String(item.paymentStatus || "").toLowerCase());
   const makeStages = definitions => definitions.map(([label, condition, currentCondition]) => ({
     label,
     done: Boolean(condition),
@@ -111,11 +112,10 @@ function App() {
   const [page, setPage] = useState("landing");
   const [user] = useState(null);
   const [accountDetails, setAccountDetails] = useState(() => {
-    const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
+    const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true,signInAlerts:true,privacyMode:true,deviceLockReminder:false};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
   });
-  const [notifications, setNotifications] = useState([]);
-  const [notificationError] = useState("Testing mode: notifications are not connected.");
+
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkBackground, setDarkBackground] = useState(false);
   const [notice, setNotice] = useState("");
@@ -128,10 +128,51 @@ function App() {
   const [supportForm, setSupportForm] = useState({name:"",email:"",topic:"Care request",message:""});
   const [supportNotice, setSupportNotice] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState("card_test");
+  const [bookingPaymentError, setBookingPaymentError] = useState("");
+  const [bookingPaymentNotice, setBookingPaymentNotice] = useState("");
   const [activityFilter, setActivityFilter] = useState("all");
   const workflow = useTestWorkflow();
   const activities = getActivityRecords(workflow);
+  // In-app activity notifications are derived from the same simulated request ledger.
+  // A push/email notification adapter can replace this selector when a backend exists.
+  const notifications = activities.slice(0, 5).map(item => ({
+    id: item.id,
+    title: activityKind(item),
+    message: String(activityStatus(item)).replace(/_/g, " ") + " · " + activityProviderLabel(item),
+    createdAt: item.updatedAt || item.createdAt,
+    read: true
+  }));
+  const notificationError = "";
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
+
+  const cancelSelectedBooking = () => {
+    if (!selectedActivity?.id || !window.confirm("Cancel this sandbox request? If it has a simulated payment, a test refund record will be created. No real money moves.")) return;
+    setBookingPaymentError("");
+    setBookingPaymentNotice("");
+    const result = cancelTestBooking(selectedActivity.id);
+    if (result?.error) { setBookingPaymentError(result.error); return; }
+    const latest = readWorkflow().bookings.find(item => item.id === selectedActivity.id);
+    if (latest) setSelectedActivity(latest);
+    workflow.refresh();
+    setBookingPaymentNotice(latest?.refundId ? "Request cancelled. A simulated refund record was created; no funds moved." : "Request cancelled in the sandbox. No payment was collected.");
+  };
+
+  const payForSelectedBooking = () => {
+    if (!selectedActivity?.id) return;
+    setBookingPaymentError("");
+    setBookingPaymentNotice("");
+    try {
+      const payment = simulateTestBookingPayment(selectedActivity.id, bookingPaymentMethod);
+      const latest = readWorkflow().bookings.find(item => item.id === selectedActivity.id);
+      if (latest) setSelectedActivity(latest);
+      workflow.refresh();
+      setBookingPaymentNotice("Simulated payment authorised. No funds moved. Your request is now confirmed in the sandbox.");
+      if (!payment) setBookingPaymentNotice("This booking already has a simulated payment record.");
+    } catch (error) {
+      setBookingPaymentError(error.message || "Could not complete the simulated checkout.");
+    }
+  };
 
   const openForm = (type, extra = {}) => {
     setNotice("");
@@ -203,7 +244,7 @@ function App() {
         <div className="tracker-latest-card">
           <div className="tracker-topline"><div><strong>{activityKind(latestActiveActivity)}</strong><p>{latestActiveActivity.id || "Preview reference"} · {activityDate(latestActiveActivity.requestedDate ? latestActiveActivity.requestedDate + "T" + (latestActiveActivity.requestedTime || "00:00") : latestActiveActivity.createdAt)}</p><small className="tracker-last-update">Last update: {activityDate(latestActiveActivity.updatedAt || latestActiveActivity.providerResponseAt || latestActiveActivity.createdAt)}</small></div><span className="tracker-status">{String(activityStatus(latestActiveActivity)).replace(/_/g," ")}</span></div>
           <div className="tracker-timeline">{activityStages(latestActiveActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
-          <p className="tracker-preview-note">Preview only. Provider, payment and driver updates are not live.</p>
+          <p className="tracker-preview-note">Updates reflect this browser’s simulated workflow. Live dispatch and push notifications are not connected.</p>
           <button className="button button-primary" onClick={()=>{setSelectedActivity(latestActiveActivity);setPage("activities");}}>View request details <ArrowRight size={16}/></button>
         </div>
       </div> : <div className="tracker-empty-state"><HeartPulse size={28}/><strong>Your care journey starts here</strong><p>Your latest active booking or medication order will appear here.</p><div className="tracker-empty-actions"><button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("doctor-booking")}>Book a doctor <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("homecare-booking")}>Request homecare <ArrowRight size={14}/></button></div></div>}
@@ -267,8 +308,8 @@ function App() {
         <div className="modal-head"><div><div className="eyebrow">ACTIVITY DETAILS · TEST PREVIEW</div><h2>{activityKind(selectedActivity)}</h2></div><button type="button" className="icon-button" aria-label="Close activity details" onClick={()=>setSelectedActivity(null)}><X/></button></div>
         <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Service coordinator / provider",activityProviderLabel(selectedActivity)],["Delivery driver",selectedActivity.driverName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Fixed service price",selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):(typeof selectedActivity.servicePrice==="number"?"R"+selectedActivity.servicePrice.toFixed(2):(typeof selectedActivity.totalAmount==="number"?"R"+selectedActivity.totalAmount.toFixed(2):"Not configured in preview"))],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
         <h3 className="activity-timeline-title">Progress</h3><div className="tracker-timeline detail-timeline">{activityStages(selectedActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
-        <div className="inline-message"><ShieldCheck size={17}/><span>Test preview only. Provider, payment, pharmacy verification and driver tracking are not live. Do not enter real patient information.</span></div>
-        <a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
+        {selectedActivity.testOnly && selectedActivity.kind && selectedActivity.status === "accepted" && selectedActivity.paymentStatus !== "test_authorized" && <div className="activity-payment-panel"><div className="eyebrow">CHECKOUT</div><h3>Confirm your service booking</h3><p>The provider accepted this request. Review the quote and choose a simulated payment method to confirm the booking.</p><div className="activity-payment-amount"><span>Amount due</span><strong>R{Number(selectedActivity.servicePrice ?? selectedActivity.consultationFee ?? 0).toFixed(2)}</strong></div><label>Payment method<select value={bookingPaymentMethod} onChange={event=>setBookingPaymentMethod(event.target.value)}>{SIMULATION_CONFIG.paymentMethods.map(method=><option key={method.id} value={method.id}>{method.label} · simulation</option>)}</select></label>{bookingPaymentError&&<div className="inline-message test-error"><AlertCircle size={17}/><span>{bookingPaymentError}</span></div>}<button type="button" className="button button-primary full" onClick={payForSelectedBooking}>Authorise simulated payment <ArrowRight size={16}/></button><small>No card details are collected and no real funds move. Production checkout will use a hosted payment provider and verified server callback.</small></div>}{bookingPaymentNotice&&<div className="inline-message"><CheckCircle2 size={17}/><span>{bookingPaymentNotice}</span></div>}{selectedActivity.testOnly && selectedActivity.kind && selectedActivity.paymentStatus === "test_authorized" && <div className="inline-message"><CheckCircle2 size={17}/><span>Payment authorised in sandbox · {selectedActivity.paymentId || "payment recorded"} · no real funds moved.</span></div>}<div className="inline-message"><ShieldCheck size={17}/><span>Sandbox simulation. Requests, provider decisions and simulated payment records are saved in this browser. No real patient information or payments.</span></div>
+        {selectedActivity.testOnly && selectedActivity.kind && ["awaiting_provider_review","accepted","confirmed"].includes(selectedActivity.status) && <button type="button" className="button button-outline full" onClick={cancelSelectedBooking}>Cancel request{selectedActivity.paymentStatus === "test_authorized" ? " · simulate refund" : ""}</button>}{selectedActivity.status === "cancelled" && selectedActivity.paymentStatus === "test_refunded" && <div className="inline-message"><CheckCircle2 size={17}/><span>Cancelled · simulated refund {selectedActivity.refundId} recorded. No funds moved.</span></div>}<a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
         <button type="button" className="button button-outline full" onClick={()=>setSelectedActivity(null)}>Close details</button>
       </section></div>}
     </section>;
@@ -298,8 +339,12 @@ function App() {
     </form>
     <div className="panel">
       <div className="panel-heading"><div className="panel-icon"><LockKeyhole/></div><div><h2>Login and security</h2><p>Secure access and account verification.</p></div></div>
-      <div className="account-setting-row"><span className="account-setting-icon"><Mail size={18}/></span><div><strong>Email verification</strong><p className="muted">Not available — sign-in and email verification are not connected yet.</p></div><span className="account-status">Not connected</span></div>
-      <div className="account-setting-row"><span className="account-setting-icon"><LockKeyhole size={18}/></span><div><strong>Password and sign-in</strong><p className="muted">Password changes and secure login require the authentication service to be connected.</p></div><span className="account-status">Pending</span></div>
+      <div className="account-setting-row"><span className="account-setting-icon"><Mail size={18}/></span><div><strong>Email verification</strong><p className="muted">Verification state is unavailable until a real authenticated account exists. No email is treated as verified by this sandbox.</p></div><span className="account-status">Not connected</span></div>
+      <div className="account-setting-row"><span className="account-setting-icon"><LockKeyhole size={18}/></span><div><strong>Password, multi-factor sign-in and sessions</strong><p className="muted">No password is collected here. Password changes, MFA, active-session review and sign-out-everywhere require a server-backed identity service.</p></div><span className="account-status">Not connected</span></div>
+      <label className="account-preference"><span><strong>Sign-in and account alerts</strong><small>Preference only; no real security alert can be sent in sandbox mode.</small></span><input type="checkbox" checked={Boolean(accountDetails.signInAlerts)} onChange={e=>setAccountDetails({...accountDetails,signInAlerts:e.target.checked})}/></label>
+      <label className="account-preference"><span><strong>Privacy-conscious display</strong><small>Reminder to limit personal information on shared screens; this is not an access-control boundary.</small></span><input type="checkbox" checked={Boolean(accountDetails.privacyMode)} onChange={e=>setAccountDetails({...accountDetails,privacyMode:e.target.checked})}/></label>
+      <label className="account-preference"><span><strong>Remind me to lock my device</strong><small>Saved preference only; the app cannot lock your device.</small></span><input type="checkbox" checked={Boolean(accountDetails.deviceLockReminder)} onChange={e=>setAccountDetails({...accountDetails,deviceLockReminder:e.target.checked})}/></label>
+      <button type="button" className="button button-outline account-save-preferences" onClick={()=>{try{localStorage.setItem("healthreachcare-test-account",JSON.stringify(accountDetails));setNotice("Security preferences saved in this browser. They do not enable authentication or enforce security.");}catch{setNotice("Could not save security preferences in this browser.");}}}><Save size={16}/> Save security preferences</button>
     </div>
     <div className="panel">
       <div className="panel-heading"><div className="panel-icon"><BellRing/></div><div><h2>Notification preferences</h2><p>Choose the updates you would like to receive in the connected app.</p></div></div>
@@ -322,7 +367,7 @@ function App() {
     <header className="topbar"><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><button className="icon-button theme-toggle" aria-label={darkBackground ? "Use light background" : "Use dark background"} title={darkBackground ? "Use light background" : "Use dark background"} onClick={()=>setDarkBackground(value=>!value)}>{darkBackground ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
     {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
 </header>
-    <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "doctor-provider" ? <ProviderWorkspace role="doctor" onBack={()=>setPage("home")}/> : page === "homecare-provider" ? <ProviderWorkspace role="homecare" onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "activities" ? renderActivities() : page === "support" ? renderSupport() : page === "reminders" ? renderReminders() : page === "prescriptions" ? <section className="page-content"><button className="text-button" onClick={()=>setPage("home")}><ArrowRight size={15} className="back-arrow"/> Back to Home</button><div className="eyebrow">PRESCRIPTION MEDICINES</div><h1>Upload Prescription</h1><p className="lead">A prescription is required only for medicines classified as prescription-only or where the selected pharmacy requires it.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Secure prescription submission is not connected yet</h2><p>We will not store medical documents in browser storage or expose them through a public link.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>This repository currently has no connected authenticated server, private file storage, pharmacy-owned access control, audit log or scheduled retention cleanup. Uploading a real prescription is therefore disabled until those safeguards are implemented and tested.</span></div><p className="muted">When enabled, the patient will upload a prescription only when required; the selected pharmacy's authorised staff will review it before dispensing. A booking or order acknowledgement will not count as prescription approval. ID verification will be requested only where necessary; selfies will not be mandatory by default.</p></div></section> : page === "medicines" ? <PatientMedicineShop onBack={() => setPage("home")} onOpenActivities={() => setPage("activities")} /> : renderAccount()}</main>
+    <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "doctor-provider" ? <ProviderWorkspace role="doctor" onBack={()=>setPage("home")}/> : page === "homecare-provider" ? <ProviderWorkspace role="homecare" onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "activities" ? renderActivities() : page === "support" ? renderSupport() : page === "reminders" ? renderReminders() : page === "prescriptions" ? <PrescriptionSandbox onBack={() => setPage("home")} />: page === "medicines" ? <PatientMedicineShop onBack={() => setPage("home")} onOpenActivities={() => setPage("activities")} /> : renderAccount()}</main>
     
     <nav className="bottom-nav" aria-label="Main navigation">{navItems.map(item=>{const Icon=item.icon;const active=(item.id==="activities" && page==="activities") || (item.id==="account" && page==="account") || (item.id==="home" && ["home","medicines","reminders","prescriptions"].includes(page));return <button key={item.id} className={active?"nav-item active":"nav-item"} onClick={()=>setPage(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}</nav>
     {formType && <div className="modal-backdrop" onClick={()=>setFormType("")}><section className="request-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">HEALTHREACHCARE REQUEST</div><h2>{formType==="appointment"?"Request an appointment":formType==="homecare"?"Request home care":"Prescription enquiry"}</h2></div><button className="icon-button" aria-label="Close" onClick={()=>setFormType("")}><X/></button></div>{notice && <div className="inline-message"><AlertCircle size={18}/><span>{notice}</span></div>}<p className="muted">{formType==="appointment" ? "Request a time with a verified practitioner. Your request remains pending until the provider confirms availability." : formType==="homecare" ? "Tell us what care you need and when. A provider must review and accept your request before it is confirmed." : "Send a prescription enquiry for the HealthReachCare team to review."}</p><form onSubmit={submitForm}><label>Full name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></label><label>Phone number<input required type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="e.g. 082 123 4567"/></label><label>{formType==="homecare"?"Care address / town or suburb":"Town or suburb"}<input required value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Where do you need care?"/></label>{formType!=="prescription" && <><label>{formType==="appointment"?"Preferred consultation":"Home-care service"}<select required value={form.service} onChange={e=>setForm({...form,service:e.target.value})}><option value="">Choose an option</option>{(formType==="appointment"?["In-Person","Video","Phone"]:["Nursing care","Personal care","Post-operative care","Elder care","Wound care","Other"]).map(option=><option key={option} value={option}>{option}</option>)}</select></label><div className="filter-row"><label>Preferred date<input required type="date" min={new Date().toISOString().slice(0,10)} value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label>Preferred time<input required type="time" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/></label></div>{formType==="homecare" && <label>Requested duration<select value={form.duration} onChange={e=>setForm({...form,duration:e.target.value})}>{["1 hour","2 hours","4 hours","8 hours","Overnight","Ongoing / to be discussed"].map(option=><option key={option}>{option}</option>)}</select></label>}</>}{formType==="appointment" && form.doctorName && <div className="inline-message"><Stethoscope size={17}/><span>Practitioner selected: <strong>{form.doctorName}</strong></span></div>}<label>{formType==="prescription"?"Prescription enquiry (do not include sensitive medical information)":"Additional details"}<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})} placeholder="Briefly describe what you need" rows={3}/></label><div className="inline-message"><ShieldCheck size={17}/><span>Test mode saves this enquiry in this browser only. It is not sent to a provider and no payment is taken. Do not use this form for emergencies or enter sensitive medical records.</span></div><button className="button button-primary full" type="submit" disabled={submittingRequest}>{submittingRequest ? "Sending request…" : "Save test enquiry"} <ArrowRight size={16}/></button></form></section></div>}

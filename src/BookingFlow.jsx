@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Heart, House, ShieldCheck, Stethoscope, AlertCircle, Accessibility, HandHeart, Pill, Sparkles, MapPin } from "lucide-react";
+import { saveTestBooking, SIMULATION_CONFIG } from "./test-workflow.js";
 import "./BookingFlow.css";
 const services = [
   { id: "personal_care", title: "Personal care", description: "Daily living and personal support" },
@@ -56,6 +57,8 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
   const reviewStep = homecare ? 2 : 3;
   const confirmationStep = homecare ? 3 : 4;
   const providerMatches = demoDoctors.filter(item => (doctorSkills[item.id] || []).includes(doctorService.id));
+  const serviceHourlyRate = SIMULATION_CONFIG.homecareHourlyRates[service.id] || 0;
+  const quotedServicePrice = homecare ? serviceHourlyRate * Number(duration || 0) : Number(doctor.consultationFee || 0);
   const areaMatches = patientArea.trim() ? providerMatches.filter(item => item.location.toLowerCase().includes(patientArea.trim().toLowerCase())) : [];
   const visibleDoctors = areaMatches.length ? areaMatches : providerMatches;
   const next = () => {
@@ -68,19 +71,20 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
     setStep(current => Math.min(reviewStep, current + 1));
   };
   const submit = () => {
+    setMessage("");
     try {
-      const key = "healthreachcare-test-bookings";
-      const existing = JSON.parse(localStorage.getItem(key) || "[]");
-      const item = {
-        id: "test-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      const item = saveTestBooking({
         kind: homecare ? "homecare" : "appointment",
+        type: homecare ? "homecare" : "appointment",
         providerId: homecare ? "demo-homecare-provider" : doctor.id,
-        providerName: homecare ? "Demo Homecare Provider" : doctor.name,
+        providerName: homecare ? "Central homecare coordination (sandbox)" : doctor.name,
         patientName: name.trim(),
         patientPhone: phone.trim(),
-        patientUid: "local-test-patient",
+        patientUid: "local-sandbox-patient",
         location: homecare ? address.trim() : patientArea.trim() || "Area not provided",
+        address: homecare ? address.trim() : "",
         serviceType: homecare ? service.title : doctorService.title + (doctorSubservice ? " — " + doctorSubservice : ""),
+        service: homecare ? service.title : doctorService.title + (doctorSubservice ? " — " + doctorSubservice : ""),
         consultationCategory: homecare ? "" : doctorService.title,
         consultationSubservice: homecare ? "" : doctorSubservice,
         patientArea: homecare ? "" : patientArea.trim(),
@@ -88,32 +92,31 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
         consultationMode: homecare ? "In-person" : mode,
         doctorId: homecare ? "" : doctor.id,
         doctorName: homecare ? "" : doctor.name,
-        consultationFee: homecare ? 0 : doctor.consultationFee,
-        duration: homecare ? duration + " hours" : "",
+        consultationFee: homecare ? 0 : quotedServicePrice,
+        servicePrice: quotedServicePrice,
+        pricingUnit: homecare ? "ZAR per selected visit duration" : "ZAR per consultation",
+        duration: homecare ? Number(duration) : 0,
         requestedDate: date,
         requestedTime: time,
+        date,
+        time,
         details: notes.trim(),
-        status: "pending",
-        requestStatus: "pending",
-        paymentStatus: "not_connected",
-        createdAt: new Date().toISOString()
-      };
-      localStorage.setItem(key, JSON.stringify([item, ...existing]));
-      window.dispatchEvent(new CustomEvent("healthreachcare-test-bookings-updated"));
+        paymentProvider: SIMULATION_CONFIG.paymentAdapter
+      });
       setSubmittedRequest(item);
       setMessage("");
       setStep(confirmationStep);
-    } catch {
-      setMessage("Could not save this test request. Check browser storage settings and try again.");
+    } catch (error) {
+      setMessage(error.message || "Could not save the request. Check browser storage and try again.");
     }
   };
   return <section className="page-content booking-page">
     <button className="booking-back-link" onClick={step === 0 ? onBack : () => { setStep(current => current - 1); setMessage(""); }}><ArrowLeft size={16}/> {step === 0 ? "Back to HealthReachCare" : "Previous step"}</button>
-    <div className="booking-heading"><div className="booking-heading-icon">{homecare ? <House size={25}/> : <Stethoscope size={25}/>}</div><div><div className="eyebrow">{homecare ? "HOMECARE REQUEST" : "DOCTOR APPOINTMENT"}</div><h1>{homecare ? (step === 0 ? "Choose homecare" : step === detailsStep ? "Visit details" : step === confirmationStep ? "Request received" : "Review your request") : (step === 0 ? "Choose a consultation" : step === 1 ? "Find a suitable doctor" : step === detailsStep ? "Visit details" : step === confirmationStep ? "Request received" : "Review your appointment")}</h1><p>{homecare ? "Choose a care service, date and time. This preview does not take payment." : "Choose the service first, then find a suitable provider for your needs."}</p></div></div>
-    <div className="booking-test-banner compact-test-banner"><ShieldCheck size={17}/><span><strong>Test mode.</strong> Requests stay on this device. No real booking or payment.</span></div>
+    <div className="booking-heading"><div className="booking-heading-icon">{homecare ? <House size={25}/> : <Stethoscope size={25}/>}</div><div><div className="eyebrow">{homecare ? "HOMECARE REQUEST" : "DOCTOR APPOINTMENT"}</div><h1>{homecare ? (step === 0 ? "Choose homecare" : step === detailsStep ? "Visit details" : step === confirmationStep ? "Request received" : "Review your request") : (step === 0 ? "Choose a consultation" : step === 1 ? "Find a suitable doctor" : step === detailsStep ? "Visit details" : step === confirmationStep ? "Request received" : "Review your appointment")}</h1><p>{homecare ? "Choose a care service, preferred visit time and review the quoted price. Payment is simulated after provider acceptance." : "Choose the service first, then find a suitable provider for your needs."}</p></div></div>
+    <div className="booking-test-banner compact-test-banner"><ShieldCheck size={17}/><span><strong>Sandbox simulation.</strong> Requests are saved locally and processed through simulated provider and payment workflows.</span></div>
     {homecare && step === 0 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>What care do you need?</h2><p>Select one service to continue.</p></div></div><div className="booking-service-grid">{services.map(s=>{const Icon=s.id==="personal_care"?HandHeart:s.id==="elderly_care"?Heart:s.id==="post_surgery"?ShieldCheck:s.id==="mobility"?Accessibility:s.id==="medication_support"?Pill:Sparkles;return <button type="button" key={s.id} className={service.id === s.id ? "booking-service-card selected" : "booking-service-card"} aria-pressed={service.id===s.id} onClick={() => setService(s)}><span className="booking-service-icon"><Icon size={22}/></span><strong>{s.title}</strong><small>{s.description}</small><span className="booking-select-label">{service.id === s.id ? <><CheckCircle2 size={14}/> Selected</> : "Select service"}</span></button>})}</div></div>}
     {!homecare && step === 0 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>What do you need help with?</h2><p>Choose a service first. You can describe your concern without choosing a diagnosis.</p></div></div><div className="booking-service-grid">{doctorServices.map(s=><button type="button" key={s.id} className={doctorService.id === s.id ? "booking-service-card selected" : "booking-service-card"} aria-pressed={doctorService.id===s.id} onClick={() => {setDoctorService(s);setDoctorSubservice(s.subs[0]);setDoctor(demoDoctors.find(item => (doctorSkills[item.id]||[]).includes(s.id)) || demoDoctors[0]);}}><span className="booking-service-icon"><Stethoscope size={21}/></span><strong>{s.title}</strong><small>{s.description}</small><span className="booking-select-label">{doctorService.id === s.id ? <><CheckCircle2 size={14}/> Selected</> : "Choose service"}</span></button>)}</div><label className="booking-field"><span>More specifically</span><select value={doctorSubservice} onChange={e=>setDoctorSubservice(e.target.value)}>{doctorService.subs.map(item=><option key={item} value={item}>{item}</option>)}</select></label><label className="booking-field"><span>Tell us what you need (optional)</span><textarea rows={3} maxLength={500} value={healthConcern} onChange={e=>setHealthConcern(e.target.value)} placeholder="Briefly describe what you would like help with. Avoid urgent emergencies and unnecessary sensitive details."/></label><div className="booking-test-banner"><ShieldCheck size={17}/><span>These are service categories, not diagnoses. A qualified clinician will assess your concern.</span></div></div>}
-    {!homecare && step === 1 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Suitable test doctors</h2><p>Providers should match your selected service and location. These sample profiles are illustrative only; live distance, availability and credentials are not connected.</p></div></div><label className="booking-field"><span>Your suburb or town</span><div className="booking-search-box"><MapPin size={17}/><input value={patientArea} onChange={e=>setPatientArea(e.target.value)} placeholder="Enter suburb, town or city" aria-label="Your suburb or town"/></div><small>This area will be attached to your test request. Real nearby matching requires the provider directory and location service.</small></label><div className="booking-service-grid booking-provider-grid">{visibleDoctors.map(d=><button type="button" key={d.id} className={doctor.id === d.id ? "booking-service-card selected" : "booking-service-card"} onClick={() => setDoctor(d)}><span className="booking-service-icon"><Stethoscope size={21}/></span><strong>{d.name}</strong><small>{d.specialty}</small><small>{d.location}</small><small>Illustrative fee: R{d.consultationFee.toFixed(2)}</small><span className="booking-select-label">{doctor.id === d.id ? <><CheckCircle2 size={14}/> Selected</> : "Select doctor"}</span></button>)}</div><div className="booking-field"><span>Consultation format</span><div className="booking-option-row">{modes.map(m=><button type="button" key={m} className={mode === m ? "booking-option selected" : "booking-option"} onClick={() => setMode(m)}>{m}</button>)}</div></div></div>}
+    {!homecare && step === 1 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Available sandbox practitioners</h2><p>Providers should match your selected service and location. Sandbox practitioner profiles are used for this journey. Live credentials, availability and distance matching will be supplied by the provider directory.</p></div></div><label className="booking-field"><span>Your suburb or town</span><div className="booking-search-box"><MapPin size={17}/><input value={patientArea} onChange={e=>setPatientArea(e.target.value)} placeholder="Enter suburb, town or city" aria-label="Your suburb or town"/></div><small>This area will be attached to your test request. Real nearby matching requires the provider directory and location service.</small></label><div className="booking-service-grid booking-provider-grid">{visibleDoctors.map(d=><button type="button" key={d.id} className={doctor.id === d.id ? "booking-service-card selected" : "booking-service-card"} onClick={() => setDoctor(d)}><span className="booking-service-icon"><Stethoscope size={21}/></span><strong>{d.name}</strong><small>{d.specialty}</small><small>{d.location}</small><small>Consultation fee: R{d.consultationFee.toFixed(2)}</small><span className="booking-select-label">{doctor.id === d.id ? <><CheckCircle2 size={14}/> Selected</> : "Select doctor"}</span></button>)}</div><div className="booking-field"><span>Consultation format</span><div className="booking-option-row">{modes.map(m=><button type="button" key={m} className={mode === m ? "booking-option selected" : "booking-option"} onClick={() => setMode(m)}>{m}</button>)}</div></div></div>}
     {step === detailsStep && <div className="booking-main-card"><div className="booking-section-title"><div><h2>{homecare ? "Tell us about the visit" : "Your preferred appointment"}</h2><p>Fill in the required details.</p></div></div><div className="booking-form-grid">
       <label className="booking-field"><span>Full name</span><input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required/></label>
       <label className="booking-field"><span>Phone number</span><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" placeholder="e.g. 082 123 4567" required/></label>
@@ -122,10 +125,10 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
       <label className="booking-field"><span>Preferred time</span><select value={time} onChange={e => setTime(e.target.value)} required><option value="">Choose a time</option>{times.map(t => <option key={t} value={t}>{t}</option>)}</select></label>
       {homecare && <label className="booking-field"><span>Duration</span><select value={duration} onChange={e => setDuration(e.target.value)}>{["1","2","4","8"].map(h => <option key={h} value={h}>{h} {h === "1" ? "hour" : "hours"}</option>)}</select></label>}
     </div>{!homecare && <div className="booking-field"><span>Consultation type</span><div className="booking-option-row">{modes.map(m => <button key={m} className={mode === m ? "booking-option selected" : "booking-option"} onClick={() => setMode(m)}>{m}</button>)}</div></div>}<label className="booking-field"><span>Additional notes (optional)</span><textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Avoid detailed medical information in this preview."/></label></div>}
-    {step === reviewStep && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Check your details</h2><p>Check your details before sending.</p></div></div><div className="booking-summary-table">{[["Patient",name],["Service",homecare ? service.title : doctorService.title + " — " + doctorSubservice],["Consultation",homecare ? duration + " hours" : mode],["Address / area",homecare ? address : patientArea || "Not provided"],["Preferred date",date],["Preferred time",time],["Request status","Waiting for provider review"],["Test provider",homecare ? "Demo Homecare Provider" : doctor.name],["What you need help with",homecare ? "Not applicable" : (healthConcern || "No additional details provided")],["Service price",homecare ? "Fixed price not configured in preview" : "R" + doctor.consultationFee.toFixed(2)],["Pricing",homecare ? "Fixed price not configured in this preview" : "Illustrative consultation fee only"],["Payment","Not connected"]].map(([label,value]) => <div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div></div>}
-    {step === confirmationStep && <div className="booking-main-card booking-confirmation"><div className="booking-success-illustration"><CheckCircle2 size={42}/></div><div className="eyebrow">REQUEST CREATED</div><h2>Test request received</h2><p className="booking-muted">Your test request is in the {homecare ? "Homecare Provider" : "Doctor"} workspace on this device. It is waiting for review.</p><div className="booking-summary-table">{[["Reference",submittedRequest?.id || "Test request"],["Service",submittedRequest?.serviceType || service.title],["Preferred date",submittedRequest?.requestedDate || date],["Preferred time",submittedRequest?.requestedTime || time],["Status","Waiting for provider response"],["Payment","Not connected"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value}</strong></div>)}</div><div className="booking-confirm-note"><ShieldCheck size={17}/> Test only · No provider contacted · No payment taken</div></div>}
+    {step === reviewStep && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Check your details</h2><p>Check your details before sending.</p></div></div><div className="booking-summary-table">{[["Patient",name],["Service",homecare ? service.title : doctorService.title + " — " + doctorSubservice],["Consultation",homecare ? duration + " hours" : mode],["Address / area",homecare ? address : patientArea || "Not provided"],["Preferred date",date],["Preferred time",time],["Request status","Waiting for provider review"],["Test provider",homecare ? "Central homecare coordination (sandbox)" : doctor.name],["What you need help with",homecare ? "Not applicable" : (healthConcern || "No additional details provided")],["Service price","R" + quotedServicePrice.toFixed(2)],["Pricing",homecare ? "Sandbox rate: R" + serviceHourlyRate.toFixed(2) + " per hour" : "Sandbox consultation fee"],["Payment","Pay after provider acceptance"]].map(([label,value]) => <div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div></div>}
+    {step === confirmationStep && <div className="booking-main-card booking-confirmation"><div className="booking-success-illustration"><CheckCircle2 size={42}/></div><div className="eyebrow">REQUEST CREATED</div><h2>Request received</h2><p className="booking-muted">Your request is in the {homecare ? "Homecare coordination" : "Doctor"} workspace. The provider must accept it before checkout is enabled.</p><div className="booking-summary-table">{[["Reference",submittedRequest?.id || "Test request"],["Service",submittedRequest?.serviceType || service.title],["Preferred date",submittedRequest?.requestedDate || date],["Preferred time",submittedRequest?.requestedTime || time],["Status","Awaiting provider review"],["Quoted amount","R" + Number(submittedRequest?.servicePrice || submittedRequest?.consultationFee || 0).toFixed(2)],["Payment","Pay after provider acceptance"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value}</strong></div>)}</div><div className="booking-confirm-note"><ShieldCheck size={17}/> Sandbox simulation · Provider action and payment authorisation are simulated</div></div>}
     {message && <div className="booking-validation-error"><AlertCircle size={17}/> {message}</div>}
-    {step < confirmationStep && <div className="booking-actions"><button type="button" className="button button-outline" onClick={step === 0 ? onBack : () => {setStep(current => current - 1);setMessage("");}}><ArrowLeft size={16}/> {step === 0 ? "Home" : "Back"}</button>{step < reviewStep ? <button type="button" className="button button-primary" onClick={next}>{step === 0 && !homecare ? "Find suitable doctors" : step === 1 && !homecare ? "Continue to details" : "Continue"} <ArrowRight size={16}/></button> : <button type="button" className="button button-primary" onClick={submit}>Submit test request <ArrowRight size={16}/></button>}</div>}
+    {step < confirmationStep && <div className="booking-actions"><button type="button" className="button button-outline" onClick={step === 0 ? onBack : () => {setStep(current => current - 1);setMessage("");}}><ArrowLeft size={16}/> {step === 0 ? "Home" : "Back"}</button>{step < reviewStep ? <button type="button" className="button button-primary" onClick={next}>{step === 0 && !homecare ? "Find suitable doctors" : step === 1 && !homecare ? "Continue to details" : "Continue"} <ArrowRight size={16}/></button> : <button type="button" className="button button-primary" onClick={submit}>Submit request <ArrowRight size={16}/></button>}</div>}
     {step === confirmationStep && <div className="booking-actions"><button type="button" className="button button-outline" onClick={onBack}>Back to home</button><button type="button" className="button button-primary" onClick={onOpenActivities}>View Activities <ArrowRight size={16}/></button></div>}
   </section>;
 }

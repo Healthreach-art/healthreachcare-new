@@ -2,6 +2,27 @@ import { useCallback, useEffect, useState } from "react";
 
 export const WORKFLOW_KEY = "healthreachcare-test-workflow-v1";
 export const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
+
+// A replaceable simulation configuration. A production pricing service can replace
+// this module without changing the booking and checkout screens.
+export const SIMULATION_CONFIG = Object.freeze({
+  currency: "ZAR",
+  deliveryFee: 35,
+  homecareHourlyRates: Object.freeze({
+    personal_care: 280,
+    elderly_care: 300,
+    post_surgery: 420,
+    mobility: 280,
+    medication_support: 250,
+    specialised_care: 500
+  }),
+  paymentMethods: Object.freeze([
+    { id: "card_test", label: "Bank card", provider: "simulated-card" },
+    { id: "eft_test", label: "Instant EFT", provider: "simulated-eft" },
+    { id: "wallet_test", label: "HealthReach wallet", provider: "simulated-wallet" }
+  ]),
+  paymentAdapter: "local-simulation"
+});
 export const TEST_PRODUCTS = [
   { id: "test-paracetamol", name: "Paracetamol 500 mg", category: "OTC test item", description: "Illustrative catalogue item for interface testing only.", price: 25, stock: 24, prescriptionRequired: false, active: true },
   { id: "test-ors", name: "Oral rehydration salts", category: "OTC test item", description: "Illustrative catalogue item for interface testing only.", price: 12, stock: 40, prescriptionRequired: false, active: true },
@@ -9,7 +30,7 @@ export const TEST_PRODUCTS = [
   { id: "test-thermometer", name: "Digital thermometer", category: "Health equipment test item", description: "Illustrative catalogue item for interface testing only.", price: 89, stock: 10, prescriptionRequired: false, active: true }
 ];
 
-const freshState = () => ({ version: 1, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], updatedAt: new Date().toISOString() });
+const freshState = () => ({ version: 1, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], updatedAt: new Date().toISOString() });
 
 export function readWorkflow() {
   if (typeof window === "undefined") return freshState();
@@ -32,7 +53,8 @@ export function readWorkflow() {
       })(),
       orders: Array.isArray(parsed.orders) ? parsed.orders : [],
       payments: Array.isArray(parsed.payments) ? parsed.payments : [],
-      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : []
+      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
+      prescriptions: Array.isArray(parsed.prescriptions) ? parsed.prescriptions : []
     };
   } catch { return freshState(); }
 }
@@ -54,7 +76,8 @@ export function updateWorkflow(mutator) {
     inventory: current.inventory.map(item => ({ ...item })),
     orders: current.orders.map(item => ({ ...item, items: Array.isArray(item.items) ? item.items.map(line => ({ ...line })) : [] })),
     payments: current.payments.map(item => ({ ...item })),
-    bookings: current.bookings.map(item => ({ ...item }))
+    bookings: current.bookings.map(item => ({ ...item })),
+    prescriptions: (current.prescriptions || []).map(item => ({ ...item }))
   };
   const result = mutator(draft);
   if (result?.error) return result;
@@ -80,7 +103,7 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
   if (!lines.length) throw new Error("Add at least one item before checkout.");
   const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
   const order = {
-    id: "TEST-ORD-" + Date.now().toString(36).toUpperCase(),
+    id: "HRC-ORD-" + Date.now().toString(36).toUpperCase(),
     patientName: String(patientName || "").trim(),
     phone: String(phone || "").trim(),
     address: String(address || "").trim(),
@@ -88,8 +111,8 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
     notes: String(notes || "").trim(),
     fulfilment,
     subtotal,
-    deliveryFee: fulfilment === "delivery" ? 35 : 0,
-    total: subtotal + (fulfilment === "delivery" ? 35 : 0),
+    deliveryFee: fulfilment === "delivery" ? SIMULATION_CONFIG.deliveryFee : 0,
+    total: subtotal + (fulfilment === "delivery" ? SIMULATION_CONFIG.deliveryFee : 0),
     status: "awaiting_payment",
     paymentStatus: "pending_gateway",
     paymentMethod: "",
@@ -106,9 +129,10 @@ export function recordTestPayment(orderId, method) {
   const result = updateWorkflow(draft => {
     const order = draft.orders.find(item => item.id === orderId);
     if (!order) return { error: "Order not found. Please return to the patient shop." };
-    if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId) };
+    if (order.status === "cancelled" || order.paymentStatus === "test_refunded") return { error: "This order is cancelled and cannot be paid again." };
+    if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId && item.type !== "refund") };
     payment = {
-      id: "TEST-PAY-" + Date.now().toString(36).toUpperCase(),
+      id: "HRC-PAY-" + Date.now().toString(36).toUpperCase(),
       orderId,
       amount: order.total,
       method,
@@ -130,7 +154,7 @@ export function recordTestPayment(orderId, method) {
 
 export function transitionTestOrder(orderId, nextStatus) {
   const allowed = {
-    awaiting_payment: [],
+    awaiting_payment: ["cancelled"],
     awaiting_pharmacy: ["accepted", "cancelled"],
     accepted: ["preparing", "cancelled"],
     preparing: ["ready_for_delivery", "ready_for_pickup"],
@@ -157,16 +181,177 @@ export function transitionTestOrder(orderId, nextStatus) {
       }
       order.stockDeducted = true;
     }
+    if (nextStatus === "cancelled") {
+      if (order.stockDeducted && !order.stockRestocked) {
+        for (const line of order.items) {
+          const product = draft.inventory.find(item => item.id === line.productId);
+          if (product) product.stock = Number(product.stock || 0) + Number(line.quantity || 0);
+        }
+        order.stockRestocked = true;
+      }
+      if (order.paymentStatus === "test_authorized") {
+        const refund = {
+          id: "HRC-REF-" + Date.now().toString(36).toUpperCase(),
+          orderId,
+          amount: Number(order.total || 0),
+          method: order.paymentMethod,
+          status: "test_refunded",
+          type: "refund",
+          testOnly: true,
+          fundsMoved: false,
+          createdAt: new Date().toISOString()
+        };
+        draft.payments.unshift(refund);
+        order.refundId = refund.id;
+        order.paymentStatus = "test_refunded";
+      }
+    }
     order.status = nextStatus;
     order.updatedAt = new Date().toISOString();
+    order.statusHistory = [...(order.statusHistory || []), { status: nextStatus, at: order.updatedAt, testOnly: true }];
     return { value: order };
   });
 }
 
 export function saveTestBooking(booking) {
-  const item = { ...booking, id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(), status: "awaiting_provider_review", paymentStatus: "not_started", testOnly: true, createdAt: new Date().toISOString() };
-  updateWorkflow(draft => { draft.bookings.unshift(item); return { value: item }; });
+  const now = new Date().toISOString();
+  const item = {
+    ...booking,
+    id: booking.id || "HRC-REQ-" + Date.now().toString(36).toUpperCase(),
+    status: "awaiting_provider_review",
+    paymentStatus: "not_started",
+    paymentId: null,
+    statusHistory: [{ status: "awaiting_provider_review", at: now, testOnly: true }],
+    testOnly: true,
+    createdAt: now,
+    updatedAt: now
+  };
+  const result = updateWorkflow(draft => {
+    if (draft.bookings.some(existing => existing.id === item.id)) return { error: "A request with this reference already exists." };
+    draft.bookings.unshift(item);
+    return { value: item };
+  });
+  if (result?.error) throw new Error(result.error);
   return item;
+}
+
+// Sandbox prescription intake stores metadata only; no file bytes or medical document
+// are uploaded or persisted. Replace this with private object storage and pharmacy ACLs.
+export function saveTestPrescription({ patientName, fileName, fileType, fileSize, notes = "" }) {
+  const extension = String(fileName || "").toLowerCase().split(".").pop();
+  const resolvedType = fileType || ({ pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" }[extension] || "");
+  const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+  if (!String(patientName || "").trim()) throw new Error("Enter the sandbox patient name.");
+  if (!String(fileName || "").trim()) throw new Error("Choose a sample file to simulate intake.");
+  if (!allowedTypes.includes(resolvedType)) throw new Error("Use a PDF, JPG or PNG sample file.");
+  if (!Number.isFinite(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 5 * 1024 * 1024) throw new Error("The sample file must be smaller than 5 MB.");
+  const now = new Date().toISOString();
+  const item = {
+    id: "HRC-RX-" + Date.now().toString(36).toUpperCase(),
+    patientName: String(patientName).trim().slice(0,100),
+    fileName: String(fileName).split(/[\\/]/).pop().slice(0,160),
+    fileType: resolvedType,
+    fileSize: Number(fileSize),
+    notes: String(notes || "").trim().slice(0,500),
+    status: "awaiting_pharmacy_review",
+    reviewStatus: "awaiting_pharmacy_review",
+    createdAt: now,
+    updatedAt: now,
+    testOnly: true,
+    fileStored: false,
+    fileUploaded: false
+  };
+  const result = updateWorkflow(draft => { draft.prescriptions.unshift(item); return { value: item }; });
+  if (result?.error) throw new Error(result.error);
+  return item;
+}
+
+export function transitionTestPrescription(prescriptionId, nextStatus, reviewNote = "") {
+  const allowed = { awaiting_pharmacy_review: ["approved_for_test", "needs_information", "rejected"], needs_information: ["awaiting_pharmacy_review", "rejected"], approved_for_test: [], rejected: [] };
+  return updateWorkflow(draft => {
+    const item = (draft.prescriptions || []).find(entry => entry.id === prescriptionId && entry.testOnly === true);
+    if (!item) return { error: "Sandbox prescription request not found." };
+    if (!(allowed[item.status] || []).includes(nextStatus)) return { error: "This prescription review transition is not allowed." };
+    item.status = nextStatus;
+    item.reviewStatus = nextStatus;
+    item.reviewNote = String(reviewNote || "").trim().slice(0,500);
+    item.reviewedAt = new Date().toISOString();
+    item.updatedAt = item.reviewedAt;
+    return { value: item };
+  });
+}
+
+// Payment adapter seam: replace this implementation with a hosted gateway and
+// verified server webhook when production credentials and backend are configured.
+export function simulateTestBookingPayment(bookingId, method) {
+  let payment;
+  const result = updateWorkflow(draft => {
+    const booking = draft.bookings.find(item => item.id === bookingId && item.testOnly === true);
+    if (!booking) return { error: "Booking not found. Refresh Activities and try again." };
+    if (booking.status !== "accepted") return { error: "The provider must accept the request before payment." };
+    if (booking.paymentStatus === "test_authorized") {
+      return { value: draft.payments.find(item => item.bookingId === bookingId) || null };
+    }
+    const selectedMethod = SIMULATION_CONFIG.paymentMethods.find(item => item.id === method);
+    const amount = Number(booking.servicePrice ?? booking.consultationFee);
+    if (!selectedMethod) return { error: "Choose an available test payment method." };
+    if (!Number.isFinite(amount) || amount <= 0) return { error: "A valid service price is not configured, so checkout is unavailable." };
+    const now = new Date().toISOString();
+    payment = {
+      id: "HRC-PAY-" + Date.now().toString(36).toUpperCase(),
+      bookingId,
+      amount,
+      currency: SIMULATION_CONFIG.currency,
+      method: selectedMethod.id,
+      provider: selectedMethod.provider,
+      status: "test_authorized",
+      testOnly: true,
+      fundsMoved: false,
+      idempotencyKey: "booking-" + bookingId,
+      createdAt: now
+    };
+    draft.payments.unshift(payment);
+    booking.paymentMethod = selectedMethod.id;
+    booking.paymentId = payment.id;
+    booking.paymentStatus = "test_authorized";
+    booking.status = "confirmed";
+    booking.updatedAt = now;
+    booking.statusHistory = [...(booking.statusHistory || []), { status: "test_authorized", at: now, testOnly: true }, { status: "confirmed", at: now, testOnly: true }];
+    return { value: payment };
+  });
+  if (result?.error) throw new Error(result.error);
+  return payment || result?.value;
+}
+
+export function cancelTestBooking(bookingId) {
+  const result = updateWorkflow(draft => {
+    const booking = draft.bookings.find(item => item.id === bookingId && item.testOnly === true);
+    if (!booking) return { error: "Booking not found. Refresh Activities and try again." };
+    if (!["awaiting_provider_review", "accepted", "confirmed"].includes(booking.status)) return { error: "This booking can no longer be cancelled from the sandbox." };
+    const now = new Date().toISOString();
+    if (booking.paymentStatus === "test_authorized" && !booking.refundId) {
+      const refund = {
+        id: "HRC-REF-" + Date.now().toString(36).toUpperCase(),
+        bookingId,
+        amount: Number(booking.servicePrice ?? booking.consultationFee ?? 0),
+        method: booking.paymentMethod,
+        status: "test_refunded",
+        type: "refund",
+        testOnly: true,
+        fundsMoved: false,
+        createdAt: now
+      };
+      draft.payments.unshift(refund);
+      booking.refundId = refund.id;
+      booking.paymentStatus = "test_refunded";
+    }
+    booking.status = "cancelled";
+    booking.cancelledAt = now;
+    booking.updatedAt = now;
+    booking.statusHistory = [...(booking.statusHistory || []), { status: "cancelled", at: now, testOnly: true }];
+    return { value: booking };
+  });
+  return result;
 }
 
 export function useTestWorkflow() {
@@ -186,7 +371,7 @@ export function useTestWorkflow() {
 }
 
 export function transitionTestBooking(bookingId, nextStatus) {
-  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: [], declined: [] };
+  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: ["declined"], confirmed: [], declined: [], completed: [] };
   return updateWorkflow(draft => {
     const booking = draft.bookings.find(item => item.id === bookingId);
     if (!booking) return { error: "Test request not found. Refresh and try again." };
@@ -194,6 +379,8 @@ export function transitionTestBooking(bookingId, nextStatus) {
     if (!(allowed[booking.status] || []).includes(nextStatus)) return { error: `Cannot change this request from ${booking.status} to ${nextStatus}.` };
     booking.status = nextStatus;
     booking.updatedAt = new Date().toISOString();
+    booking.providerResponseAt = booking.providerResponseAt || booking.updatedAt;
+    booking.statusHistory = [...(booking.statusHistory || []), { status: nextStatus, at: booking.updatedAt, testOnly: true }];
     return { value: booking };
   });
 }
