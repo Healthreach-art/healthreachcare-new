@@ -99,7 +99,7 @@ function App() {
   </section>;
 
   if (page === "landing") return <TestingLanding onOpenAuth={() => setPage("auth")} />;
-  if (page === "auth") return <TestingAuth onBack={() => setPage("landing")} onOpenRole={role => setPage(role === "patient" ? "home" : "test-" + role)} />;
+  if (page === "auth") return <TestingAuth onBack={() => setPage("landing")} onOpenRole={role => setPage(role === "patient" ? "home" : role === "doctor" ? "doctor-provider" : role === "homecare" ? "homecare-provider" : "test-" + role)} />;
   if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("auth")} />;
 
   return <div className="app-shell">
