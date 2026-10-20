@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
-import { useTestWorkflow } from "./test-workflow.js";
+import { readWorkflow, simulateTestBookingPayment, useTestWorkflow, SIMULATION_CONFIG } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
 
 
@@ -53,7 +53,7 @@ const activityStages = item => {
   const closed = ["declined", "rejected", "cancelled", "canceled"].includes(status);
   const medication = Boolean(item.items) || item.kind === "medication";
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
-  const paymentVerified = !item.testOnly && ["paid", "verified", "succeeded"].includes(String(item.paymentStatus || "").toLowerCase());
+  const paymentVerified = ["paid", "verified", "succeeded", "test_authorized"].includes(String(item.paymentStatus || "").toLowerCase());
   const makeStages = definitions => definitions.map(([label, condition, currentCondition]) => ({
     label,
     done: Boolean(condition),
@@ -128,10 +128,29 @@ function App() {
   const [supportForm, setSupportForm] = useState({name:"",email:"",topic:"Care request",message:""});
   const [supportNotice, setSupportNotice] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState("card_test");
+  const [bookingPaymentError, setBookingPaymentError] = useState("");
+  const [bookingPaymentNotice, setBookingPaymentNotice] = useState("");
   const [activityFilter, setActivityFilter] = useState("all");
   const workflow = useTestWorkflow();
   const activities = getActivityRecords(workflow);
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
+
+  const payForSelectedBooking = () => {
+    if (!selectedActivity?.id) return;
+    setBookingPaymentError("");
+    setBookingPaymentNotice("");
+    try {
+      const payment = simulateTestBookingPayment(selectedActivity.id, bookingPaymentMethod);
+      const latest = readWorkflow().bookings.find(item => item.id === selectedActivity.id);
+      if (latest) setSelectedActivity(latest);
+      workflow.refresh();
+      setBookingPaymentNotice("Simulated payment authorised. No funds moved. Your request is now confirmed in the sandbox.");
+      if (!payment) setBookingPaymentNotice("This booking already has a simulated payment record.");
+    } catch (error) {
+      setBookingPaymentError(error.message || "Could not complete the simulated checkout.");
+    }
+  };
 
   const openForm = (type, extra = {}) => {
     setNotice("");
@@ -267,7 +286,7 @@ function App() {
         <div className="modal-head"><div><div className="eyebrow">ACTIVITY DETAILS · TEST PREVIEW</div><h2>{activityKind(selectedActivity)}</h2></div><button type="button" className="icon-button" aria-label="Close activity details" onClick={()=>setSelectedActivity(null)}><X/></button></div>
         <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Service coordinator / provider",activityProviderLabel(selectedActivity)],["Delivery driver",selectedActivity.driverName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Fixed service price",selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):(typeof selectedActivity.servicePrice==="number"?"R"+selectedActivity.servicePrice.toFixed(2):(typeof selectedActivity.totalAmount==="number"?"R"+selectedActivity.totalAmount.toFixed(2):"Not configured in preview"))],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
         <h3 className="activity-timeline-title">Progress</h3><div className="tracker-timeline detail-timeline">{activityStages(selectedActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
-        <div className="inline-message"><ShieldCheck size={17}/><span>Test preview only. Provider, payment, pharmacy verification and driver tracking are not live. Do not enter real patient information.</span></div>
+        {selectedActivity.testOnly && selectedActivity.kind && selectedActivity.status === "accepted" && selectedActivity.paymentStatus !== "test_authorized" && <div className="activity-payment-panel"><div className="eyebrow">CHECKOUT</div><h3>Confirm your service booking</h3><p>The provider accepted this request. Review the quote and choose a simulated payment method to confirm the booking.</p><div className="activity-payment-amount"><span>Amount due</span><strong>R{Number(selectedActivity.servicePrice ?? selectedActivity.consultationFee ?? 0).toFixed(2)}</strong></div><label>Payment method<select value={bookingPaymentMethod} onChange={event=>setBookingPaymentMethod(event.target.value)}>{SIMULATION_CONFIG.paymentMethods.map(method=><option key={method.id} value={method.id}>{method.label} · simulation</option>)}</select></label>{bookingPaymentError&&<div className="inline-message test-error"><AlertCircle size={17}/><span>{bookingPaymentError}</span></div>}{bookingPaymentNotice&&<div className="inline-message"><CheckCircle2 size={17}/><span>{bookingPaymentNotice}</span></div>}<button type="button" className="button button-primary full" onClick={payForSelectedBooking}>Authorise simulated payment <ArrowRight size={16}/></button><small>No card details are collected and no real funds move. Production checkout will use a hosted payment provider and verified server callback.</small></div>}{selectedActivity.testOnly && selectedActivity.kind && selectedActivity.paymentStatus === "test_authorized" && <div className="inline-message"><CheckCircle2 size={17}/><span>Payment authorised in sandbox · {selectedActivity.paymentId || "payment recorded"} · no real funds moved.</span></div>}<div className="inline-message"><ShieldCheck size={17}/><span>Sandbox simulation. Requests, provider decisions and simulated payment records are saved in this browser. No real patient information or payments.</span></div>
         <a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
         <button type="button" className="button button-outline full" onClick={()=>setSelectedActivity(null)}>Close details</button>
       </section></div>}
