@@ -103,7 +103,7 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
   if (!lines.length) throw new Error("Add at least one item before checkout.");
   const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
   const order = {
-    id: "TEST-ORD-" + Date.now().toString(36).toUpperCase(),
+    id: "HRC-ORD-" + Date.now().toString(36).toUpperCase(),
     patientName: String(patientName || "").trim(),
     phone: String(phone || "").trim(),
     address: String(address || "").trim(),
@@ -132,7 +132,7 @@ export function recordTestPayment(orderId, method) {
     if (order.status === "cancelled" || order.paymentStatus === "test_refunded") return { error: "This order is cancelled and cannot be paid again." };
     if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId && item.type !== "refund") };
     payment = {
-      id: "TEST-PAY-" + Date.now().toString(36).toUpperCase(),
+      id: "HRC-PAY-" + Date.now().toString(36).toUpperCase(),
       orderId,
       amount: order.total,
       method,
@@ -191,7 +191,7 @@ export function transitionTestOrder(orderId, nextStatus) {
       }
       if (order.paymentStatus === "test_authorized") {
         const refund = {
-          id: "TEST-REF-" + Date.now().toString(36).toUpperCase(),
+          id: "HRC-REF-" + Date.now().toString(36).toUpperCase(),
           orderId,
           amount: Number(order.total || 0),
           method: order.paymentMethod,
@@ -217,7 +217,7 @@ export function saveTestBooking(booking) {
   const now = new Date().toISOString();
   const item = {
     ...booking,
-    id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(),
+    id: booking.id || "HRC-REQ-" + Date.now().toString(36).toUpperCase(),
     status: "awaiting_provider_review",
     paymentStatus: "not_started",
     paymentId: null,
@@ -247,7 +247,7 @@ export function saveTestPrescription({ patientName, fileName, fileType, fileSize
   if (!Number.isFinite(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 5 * 1024 * 1024) throw new Error("The sample file must be smaller than 5 MB.");
   const now = new Date().toISOString();
   const item = {
-    id: "TEST-RX-" + Date.now().toString(36).toUpperCase(),
+    id: "HRC-RX-" + Date.now().toString(36).toUpperCase(),
     patientName: String(patientName).trim().slice(0,100),
     fileName: String(fileName).split(/[\\/]/).pop().slice(0,160),
     fileType: resolvedType,
@@ -298,7 +298,7 @@ export function simulateTestBookingPayment(bookingId, method) {
     if (!Number.isFinite(amount) || amount <= 0) return { error: "A valid service price is not configured, so checkout is unavailable." };
     const now = new Date().toISOString();
     payment = {
-      id: "TEST-PAY-" + Date.now().toString(36).toUpperCase(),
+      id: "HRC-PAY-" + Date.now().toString(36).toUpperCase(),
       bookingId,
       amount,
       currency: SIMULATION_CONFIG.currency,
@@ -331,7 +331,7 @@ export function cancelTestBooking(bookingId) {
     const now = new Date().toISOString();
     if (booking.paymentStatus === "test_authorized" && !booking.refundId) {
       const refund = {
-        id: "TEST-REF-" + Date.now().toString(36).toUpperCase(),
+        id: "HRC-REF-" + Date.now().toString(36).toUpperCase(),
         bookingId,
         amount: Number(booking.servicePrice ?? booking.consultationFee ?? 0),
         method: booking.paymentMethod,
