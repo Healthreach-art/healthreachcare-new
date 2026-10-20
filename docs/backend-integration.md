@@ -28,3 +28,8 @@ The adapter defines the intended contract:
 - Booking forms are local UI previews only and do not persist or send entered information.
 - No payment or checkout is available.
 - Do not deploy this as a live booking system until a backend adapter and server-side workflows are implemented and tested.
+
+
+## Courier delivery demo
+
+The driver demo adapter is `src/services/driver-delivery-demo.js`. It uses synthetic browser-only workflow records and is not a production authorization or cross-device synchronization mechanism. See `docs/driver-delivery-demo.md` for the operation contract and production server requirements.
