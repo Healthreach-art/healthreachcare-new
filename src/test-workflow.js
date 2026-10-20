@@ -174,7 +174,9 @@ export function transitionTestOrder(orderId, nextStatus) {
 }
 
 export function saveTestBooking(booking) {
-  const item = { ...booking, id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(), status: "awaiting_provider_review", paymentStatus: "not_started", testOnly: true, createdAt: new Date().toISOString() };
+  const homecare = booking?.kind === "homecare" || booking?.type === "homecare" || /home.?care/i.test(String(booking?.serviceType || booking?.service || ""));
+  if (homecare) throw new Error("Homecare bookings cannot be created in preview until a fixed price is configured and payment is verified server-side. No payment provider is connected.");
+  const item = { ...booking, id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(), status: "awaiting_provider_review", paymentStatus: "not_started", testOnly: true, createdAt: new Date().toISOString(), statusHistory: [{ status: "awaiting_provider_review", at: new Date().toISOString(), testOnly: true }] };
   updateWorkflow(draft => { draft.bookings.unshift(item); return { value: item }; });
   try { recordCareEvent({ type: "test_booking_created", title: "Test care request created", message: "Saved in this browser only. No provider was contacted.", bookingId: item.id, at: item.createdAt }); } catch { /* Preview notifications cannot block booking creation. */ }
   return item;
@@ -203,6 +205,8 @@ export function transitionTestBooking(bookingId, nextStatus) {
     if (!booking) return { error: "Test request not found. Refresh and try again." };
     if (booking.testOnly !== true) return { error: "This action is only available for test requests." };
     if (!(allowed[booking.status] || []).includes(nextStatus)) return { error: `Cannot change this request from ${booking.status} to ${nextStatus}.` };
+    const isHomecare = booking.kind === "homecare" || booking.type === "homecare" || /home.?care/i.test(String(booking.serviceType || booking.service || ""));
+    if (isHomecare && nextStatus === "accepted" && !["paid", "test_authorized"].includes(String(booking.paymentStatus || "").toLowerCase())) return { error: "Homecare provider acceptance is blocked until payment is verified. No payment provider is connected in preview." };
     booking.status = nextStatus;
     booking.updatedAt = new Date().toISOString();
     booking.statusHistory = [...(Array.isArray(booking.statusHistory) ? booking.statusHistory : [{ status: "awaiting_provider_review", at: booking.createdAt, testOnly: true }]), { status: nextStatus, at: booking.updatedAt, testOnly: true }];
