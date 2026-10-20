@@ -2,6 +2,27 @@ import { useCallback, useEffect, useState } from "react";
 
 export const WORKFLOW_KEY = "healthreachcare-test-workflow-v1";
 export const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
+
+// A replaceable simulation configuration. A production pricing service can replace
+// this module without changing the booking and checkout screens.
+export const SIMULATION_CONFIG = Object.freeze({
+  currency: "ZAR",
+  deliveryFee: 35,
+  homecareHourlyRates: Object.freeze({
+    personal_care: 280,
+    elderly_care: 300,
+    post_surgery: 420,
+    mobility: 280,
+    medication_support: 250,
+    specialised_care: 500
+  }),
+  paymentMethods: Object.freeze([
+    { id: "card_test", label: "Bank card", provider: "simulated-card" },
+    { id: "eft_test", label: "Instant EFT", provider: "simulated-eft" },
+    { id: "wallet_test", label: "HealthReach wallet", provider: "simulated-wallet" }
+  ]),
+  paymentAdapter: "local-simulation"
+});
 export const TEST_PRODUCTS = [
   { id: "test-paracetamol", name: "Paracetamol 500 mg", category: "OTC test item", description: "Illustrative catalogue item for interface testing only.", price: 25, stock: 24, prescriptionRequired: false, active: true },
   { id: "test-ors", name: "Oral rehydration salts", category: "OTC test item", description: "Illustrative catalogue item for interface testing only.", price: 12, stock: 40, prescriptionRequired: false, active: true },
@@ -186,7 +207,7 @@ export function useTestWorkflow() {
 }
 
 export function transitionTestBooking(bookingId, nextStatus) {
-  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: [], declined: [] };
+  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: ["declined"], confirmed: [], declined: [], completed: [] };
   return updateWorkflow(draft => {
     const booking = draft.bookings.find(item => item.id === bookingId);
     if (!booking) return { error: "Test request not found. Refresh and try again." };
