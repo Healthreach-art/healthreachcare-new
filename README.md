@@ -20,7 +20,7 @@ No `.env.local` or Firebase web configuration is required for this UI test.
 - Sample practitioners, time slots, fees and quote amounts are illustrative UI fixtures only.
 - Test requests may be saved to this browser's local storage under `healthreachcare-test-bookings`.
 - Requests are **not** sent to doctors, clinics, or home-care providers. Availability is not checked. No payment is collected or marked paid.
-- The header has no sidebar/dropdown navigation. The existing patient bottom navigation remains Home, Activities, Search and Account.
+- The header has no sidebar/dropdown navigation. The patient bottom navigation is Home, Activities and Account. The patient home does not show the browser-local test bookings panel, delivery-tracker placeholder, or recent-order-history placeholder.
 
 ## Before production
 
