@@ -21,7 +21,7 @@ The doctor appointment and homecare screens are UI previews. They do not send or
 
 1. Connect authenticated patient identity and load approved, verified homecare providers.
 2. Let the patient select a service and enter address, preferred visit time and duration.
-3. Match suitable providers and calculate the quote on a trusted server from approved provider rates.
+3. Load the configured fixed price for the selected service from trusted server-side pricing; never accept a client-supplied price. If no fixed price is configured, disable checkout.
 4. Submit the request and assign/confirm an approved provider through authorized workflow.
 5. Collect payment using secure checkout only after the final price and service are confirmed.
 6. Mark paid only after verified payment callback/webhook processing.
