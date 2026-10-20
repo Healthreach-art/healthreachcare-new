@@ -13,21 +13,36 @@ export const CLOSED_BOOKING_STATUSES = new Set([
 ]);
 
 export const HOMECARE_PRICE_ENV_KEYS = Object.freeze({
-  personal_care: "VITE_HOMECARE_PRICE_PERSONAL_CARE",
-  elderly_care: "VITE_HOMECARE_PRICE_ELDERLY_CARE",
-  post_surgery: "VITE_HOMECARE_PRICE_POST_SURGERY",
-  mobility: "VITE_HOMECARE_PRICE_MOBILITY",
-  medication_support: "VITE_HOMECARE_PRICE_MEDICATION_SUPPORT",
-  specialised_care: "VITE_HOMECARE_PRICE_SPECIALISED_CARE"
+  personal_care: "PERSONAL_CARE",
+  elderly_care: "ELDERLY_CARE",
+  post_surgery: "POST_SURGERY",
+  mobility: "MOBILITY",
+  medication_support: "MEDICATION_SUPPORT",
+  specialised_care: "SPECIALISED_CARE"
 });
 
-export function configuredHomecarePrice(serviceId, env = {}) {
-  const key = HOMECARE_PRICE_ENV_KEYS[serviceId];
-  if (!key) return null;
-  const raw = env[key];
+export const HOMECARE_FEE_ENV_KEYS = Object.freeze({
+  service: "VITE_HOMECARE_SERVICE_FEE",
+  travel: "VITE_HOMECARE_TRAVEL_FEE"
+});
+
+function configuredAmount(raw, allowZero = false) {
   if (raw === undefined || raw === null || String(raw).trim() === "") return null;
   const amount = Number(raw);
-  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : null;
+  if (!Number.isFinite(amount) || (allowZero ? amount < 0 : amount <= 0)) return null;
+  return Math.round(amount * 100) / 100;
+}
+
+export function configuredHomecarePrice(serviceId, env = {}, duration = "2") {
+  const serviceKey = HOMECARE_PRICE_ENV_KEYS[serviceId];
+  if (!serviceKey || !["1", "2", "4", "8"].includes(String(duration))) return null;
+  const key = "VITE_HOMECARE_PRICE_" + serviceKey + "_" + String(duration) + "H";
+  return configuredAmount(env[key]);
+}
+
+export function configuredHomecareFee(feeType, env = {}) {
+  const key = HOMECARE_FEE_ENV_KEYS[feeType];
+  return key ? configuredAmount(env[key], true) : null;
 }
 
 export function formatZar(amount) {
