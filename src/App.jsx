@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Activity, ArrowRight, Bell, CalendarDays, ChevronRight,
+  Activity, ArrowRight, Bell, CalendarDays, ChevronRight, CreditCard,
   HeartPulse, Home, MapPin, Pill, Moon, Sun,
   ShieldCheck, Stethoscope, UserRound, Video, Phone,
   Upload, House, MessageCircle, AlertCircle, X, Mail, LockKeyhole, BellRing, LogOut, Save,
@@ -19,11 +19,13 @@ const readLegacyBookings = () => {
   catch { return []; }
 };
 const activityStatus = item => String(item.status || item.requestStatus || "pending").toLowerCase();
-const isClosedActivity = item => ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
-const activityKind = item => item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
+const isClosedActivity = item => ["payment", "service-update"].includes(item.kind) || ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
+const activityKind = item => item.kind === "payment" ? "Payment record" : item.kind === "service-update" ? "Service update" : item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
 const activityProviderLabel = item => {
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
   const medication = Boolean(item.items) || item.kind === "medication";
+  if (item.kind === "payment") return "Payment provider not connected (test record)";
+  if (item.kind === "service-update") return "Preview event";
   if (homecare) return item.coordinatorName || item.homecareCoordinatorName || "Central homecare coordination team (preview)";
   if (medication) return item.pharmacyName || item.providerName || "Pharmacy not assigned in preview";
   if (item.driverName || item.driverId) return item.driverName || "Delivery driver assigned (preview)";
@@ -40,12 +42,14 @@ const hasInvalidPreviewDate = item => {
   const year = Number(String(value).slice(0, 4));
   return !Number.isFinite(year) || year < 2000 || year > 2100;
 };
-const getActivityRecords = workflow => {
+const getActivityRecords = (workflow, journey = readCareJourney()) => {
   const legacy = readLegacyBookings().map(item => ({ ...item, source: "legacy-test" }));
   const orders = (workflow.orders || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "medication", source: "workflow-test" }));
   const bookings = (workflow.bookings || []).filter(item => item.testOnly).map(item => ({ ...item, kind: item.kind || (item.serviceType?.toLowerCase().includes("home") ? "homecare" : "appointment"), source: "workflow-test" }));
-  // Hide obviously invalid legacy demo dates from the patient UI without deleting browser data.
-  return [...legacy, ...bookings, ...orders]
+  const payments = (workflow.payments || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "payment", status: item.status, paymentStatus: item.status, total: item.amount, source: "workflow-payment" }));
+  const events = (journey.events || []).filter(item => item.testOnly).map((item,index) => ({ ...item, id: "EVENT-" + (item.at || index) + "-" + (item.type || "update"), kind: "service-update", status: "update", createdAt: item.at, updatedAt: item.at, serviceType: item.title || item.type || "Care update", eventMessage: item.message, source: "journey-event" }));
+  // Hide invalid dates without deleting browser data; include payment records and explicit service events.
+  return [...legacy, ...bookings, ...orders, ...payments, ...events]
     .filter(item => !hasInvalidPreviewDate(item))
     .sort((a, b) => new Date(b.updatedAt || b.providerResponseAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.providerResponseAt || a.createdAt || 0).getTime());
 };
@@ -60,6 +64,8 @@ const activityStages = item => {
     done: Boolean(condition),
     current: !closed && Boolean(currentCondition)
   }));
+  if (item.kind === "payment") return makeStages([["Test payment event recorded", true, false], ["Real payment provider verification", false, false]]);
+  if (item.kind === "service-update") return makeStages([["Preview event recorded", true, false]]);
   if (medication) {
     const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
     const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
@@ -136,7 +142,7 @@ function App() {
   const [reviewComment, setReviewComment] = useState("");
   const [journeyNotice, setJourneyNotice] = useState("");
   const workflow = useTestWorkflow();
-  const activities = getActivityRecords(workflow);
+  const activities = getActivityRecords(workflow, careJourney);
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
 
   useEffect(() => {
@@ -369,7 +375,7 @@ function App() {
   const renderActivities = () => {
     const filtered = activities.filter(item => {
       if (activityFilter === "active") return !isClosedActivity(item);
-      if (activityFilter === "past") return ["delivered", "completed"].includes(activityStatus(item));
+      if (activityFilter === "past") return ["delivered", "completed"].includes(activityStatus(item)) || ["payment", "service-update"].includes(item.kind);
       if (activityFilter === "cancelled") return ["cancelled", "canceled", "declined", "rejected"].includes(activityStatus(item));
       return true;
     });
@@ -378,8 +384,8 @@ function App() {
       <div className="activity-filters" role="group" aria-label="Filter activities">{[["all","All"],["active","Active"],["past","Past / completed"],["cancelled","Cancelled"]].map(([value,label])=><button type="button" key={value} className={activityFilter===value?"activity-filter active":"activity-filter"} onClick={()=>setActivityFilter(value)}>{label}</button>)}</div>
       <div className="panel"><div className="panel-heading"><div className="panel-icon"><CalendarDays/></div><div><h2>Care history</h2><p>Tap any item to view its full details and progress.</p></div></div>
         {filtered.length ? <div className="activity-list">{filtered.map(item=><button type="button" className="activity-card" key={item.id} onClick={()=>setSelectedActivity(item)}>
-          <span className="activity-card-icon">{item.items?<Pill/>:activityKind(item)==="Homecare request"?<House/>:activityKind(item)==="Medication order"?<Pill/>:<Stethoscope/>}</span>
-          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{item.providerName || item.doctorName || (item.items ? "Pharmacy assignment not connected" : "Provider not assigned")}</small>{["cancelled","canceled","declined","rejected"].includes(activityStatus(item)) && (item.cancellationReason || item.cancelReason) && <small className="activity-cancellation-reason">Reason: {item.cancellationReason || item.cancelReason}</small>}</span>
+          <span className="activity-card-icon">{item.kind==="payment"?<CreditCard/>:item.kind==="service-update"?<Bell/>:item.items?<Pill/>:activityKind(item)==="Homecare request"?<House/>:activityKind(item)==="Medication order"?<Pill/>:<Stethoscope/>}</span>
+          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : item.kind==="payment" ? (item.orderId || "Related order not recorded") + " · " + (typeof item.amount==="number" ? "R"+item.amount.toFixed(2) : "Amount not recorded") : item.kind==="service-update" ? (item.eventMessage || item.message || "Preview workflow event") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{activityProviderLabel(item)}</small>{["cancelled","canceled","declined","rejected"].includes(activityStatus(item)) && (item.cancellationReason || item.cancelReason) && <small className="activity-cancellation-reason">Reason: {item.cancellationReason || item.cancelReason}</small>}</span>
           <span className={"activity-status status-"+activityStatus(item)}>{String(activityStatus(item)).replace(/_/g," ")}</span><ChevronRight size={17}/>
         </button>)}</div> : <div className="empty-state"><CalendarDays size={27}/><h3>{activityFilter==="cancelled"?"No cancelled activities":activityFilter==="past"?"No completed activities":"No activities yet"}</h3><p>Test requests and orders appear here when created in this preview. No real provider is contacted.</p><button className="button button-outline" onClick={()=>setPage("home")}>Browse services</button></div>}
       </div>
