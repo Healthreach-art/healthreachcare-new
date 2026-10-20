@@ -258,3 +258,37 @@ main{flex:1}.page-content{max-width:1180px;width:calc(100% - 56px);margin:0 auto
 .recent-activity-button>svg{flex-shrink:0;color:var(--muted)}
 @keyframes trackerPulse{0%,100%{box-shadow:0 0 0 3px #087f6212}50%{box-shadow:0 0 0 6px #087f6222}}
 @media(max-width:600px){.tracker-latest-card{padding:14px}.tracker-topline{flex-direction:column}.tracker-timeline{margin-right:-4px}.activity-card{gap:9px;align-items:flex-start}.activity-card-icon{width:36px;height:36px}.activity-card .activity-status{display:none}.activity-filter{padding:8px 11px}.detail-timeline .tracker-stage{min-width:78px;flex-basis:28%}}
+
+
+/* Care journey interactions — local preview only */
+.activity-status-history{display:grid;gap:10px;margin:10px 0 20px}
+.activity-history-row{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:#fff}
+.activity-history-row .notification-dot{margin-top:6px;flex:0 0 8px}
+.activity-history-row>div{min-width:0;display:grid;gap:3px}
+.activity-history-row strong{font-size:13px;text-transform:capitalize}
+.activity-history-row small,.activity-history-row p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.activity-interaction-panel{margin-top:14px}
+.activity-interaction-panel .panel-heading h3{margin:0;font-size:16px}
+.activity-interaction-panel .panel-heading p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.activity-interaction-panel form{display:grid;gap:12px}
+.activity-interaction-panel form label,.preview-chat-compose label{display:grid;gap:6px;font-size:13px;font-weight:600}
+.activity-interaction-panel form textarea,.activity-interaction-panel form select,.preview-chat-compose textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:11px;background:#fff;color:var(--ink);resize:vertical}
+.preview-chat-history{display:grid;gap:10px;margin:14px 0}
+.preview-chat-message{max-width:92%;justify-self:start;padding:12px;border:1px solid var(--border);border-radius:12px;background:#f5faf8}
+.preview-chat-message strong{font-size:12px}
+.preview-chat-message p{margin:5px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
+.preview-chat-message small,.preview-review small{color:var(--muted);font-size:11px}
+.preview-chat-compose{display:grid;gap:10px}
+.preview-review{border:1px solid var(--border);border-radius:12px;padding:12px;margin:10px 0}
+.preview-review strong{color:var(--green);letter-spacing:1px}
+.preview-review p{margin:7px 0;font-size:14px;white-space:pre-wrap}
+.notification-action{width:100%;border:0;text-align:left;color:inherit;background:transparent;cursor:pointer}
+.notification-action:hover,.popover-notice:hover{background:#f6faf8}
+.popover-notice{display:block;width:100%;border:0;background:#fff;text-align:left;color:inherit;cursor:pointer}
+.popover-notice small{color:var(--muted);font-size:11px}
+.favourite-provider-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
+.favourite-provider-row>div{display:grid;gap:4px;min-width:0}
+.favourite-provider-row strong{font-size:14px}
+.favourite-provider-row small{font-size:12px;color:var(--muted)}
+.favourite-provider-row .button{flex-shrink:0}
+@media(max-width:600px){.favourite-provider-row{align-items:flex-start;flex-direction:column}.favourite-provider-row .button{width:100%}.activity-interaction-panel{padding:16px}}
