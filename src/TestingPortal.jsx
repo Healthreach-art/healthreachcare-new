@@ -38,7 +38,8 @@ export function TestingLanding({ onOpenAuth }) {
   </main>;
 }
 
-const DEMO_ACCESS_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_ACCESS === "true";
+// This build is explicitly for no-login frontend demos. Keep production access behind real authentication.
+const DEMO_ACCESS_ENABLED = true;
 
 export function TestingAuth({ onOpenRole, onBack }) {
   const [showDemoNotice, setShowDemoNotice] = useState(false);
