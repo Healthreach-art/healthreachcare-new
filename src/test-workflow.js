@@ -30,7 +30,7 @@ export const TEST_PRODUCTS = [
   { id: "test-thermometer", name: "Digital thermometer", category: "Health equipment test item", description: "Illustrative catalogue item for interface testing only.", price: 89, stock: 10, prescriptionRequired: false, active: true }
 ];
 
-const freshState = () => ({ version: 2, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], reviews: [], messages: [], updatedAt: new Date().toISOString() });
+const freshState = () => ({ version: 2, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], reviews: [], messages: [], enquiries: [], updatedAt: new Date().toISOString() });
 
 export function readWorkflow() {
   if (typeof window === "undefined") return freshState();
@@ -56,7 +56,8 @@ export function readWorkflow() {
       bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
       prescriptions: Array.isArray(parsed.prescriptions) ? parsed.prescriptions : [],
       reviews: Array.isArray(parsed.reviews) ? parsed.reviews : [],
-      messages: Array.isArray(parsed.messages) ? parsed.messages : []
+      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+      enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : []
     };
   } catch { return freshState(); }
 }
@@ -81,7 +82,8 @@ export function updateWorkflow(mutator) {
     bookings: current.bookings.map(item => ({ ...item })),
     prescriptions: (current.prescriptions || []).map(item => ({ ...item })),
     reviews: (current.reviews || []).map(item => ({ ...item })),
-    messages: (current.messages || []).map(item => ({ ...item }))
+    messages: (current.messages || []).map(item => ({ ...item })),
+    enquiries: (current.enquiries || []).map(item => ({ ...item }))
   };
   const result = mutator(draft);
   if (result?.error) return result;
@@ -376,6 +378,23 @@ export function useTestWorkflow() {
     };
   }, [refresh]);
   return { ...state, refresh };
+}
+
+export function saveTestEnquiry({ type, patientName, phone, email = "", location = "", details, service = "", date = "", time = "", duration = "" }) {
+  const allowed = ["prescription", "support"];
+  if (!allowed.includes(type)) return { error: "Choose a supported enquiry type." };
+  if (!String(patientName || "").trim() || (type === "prescription" && !String(phone || "").trim())) return { error: type === "prescription" ? "Name and contact number are required." : "Enter your name before sending the support request." };
+  if (String(details || "").trim().length < 3) return { error: "Please add a short description." };
+  const now = new Date().toISOString();
+  const enquiry = {
+    id: "HRC-ENQ-" + Date.now().toString(36).toUpperCase(),
+    type, patientName: String(patientName).trim().slice(0,100),
+    phone: String(phone).trim().slice(0,40), email: String(email || "").trim().slice(0,254), location: String(location).trim().slice(0,160),
+    details: String(details).trim().slice(0,1000), service: String(service).trim().slice(0,120),
+    date, time, duration, status: "awaiting_admin_review", createdAt: now, updatedAt: now, testOnly: true
+  };
+  const result = updateWorkflow(draft => { draft.enquiries.unshift(enquiry); return { value: enquiry }; });
+  return result?.error ? result : { value: enquiry };
 }
 
 export function sendTestMessage({ requestId, requestType = "booking", senderRole, senderName, body }) {
