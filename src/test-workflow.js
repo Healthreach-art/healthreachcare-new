@@ -30,7 +30,7 @@ export const TEST_PRODUCTS = [
   { id: "test-thermometer", name: "Digital thermometer", category: "Health equipment test item", description: "Illustrative catalogue item for interface testing only.", price: 89, stock: 10, prescriptionRequired: false, active: true }
 ];
 
-const freshState = () => ({ version: 1, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], updatedAt: new Date().toISOString() });
+const freshState = () => ({ version: 2, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], reviews: [], updatedAt: new Date().toISOString() });
 
 export function readWorkflow() {
   if (typeof window === "undefined") return freshState();
@@ -54,7 +54,8 @@ export function readWorkflow() {
       orders: Array.isArray(parsed.orders) ? parsed.orders : [],
       payments: Array.isArray(parsed.payments) ? parsed.payments : [],
       bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
-      prescriptions: Array.isArray(parsed.prescriptions) ? parsed.prescriptions : []
+      prescriptions: Array.isArray(parsed.prescriptions) ? parsed.prescriptions : [],
+      reviews: Array.isArray(parsed.reviews) ? parsed.reviews : []
     };
   } catch { return freshState(); }
 }
@@ -77,7 +78,8 @@ export function updateWorkflow(mutator) {
     orders: current.orders.map(item => ({ ...item, items: Array.isArray(item.items) ? item.items.map(line => ({ ...line })) : [] })),
     payments: current.payments.map(item => ({ ...item })),
     bookings: current.bookings.map(item => ({ ...item })),
-    prescriptions: (current.prescriptions || []).map(item => ({ ...item }))
+    prescriptions: (current.prescriptions || []).map(item => ({ ...item })),
+    reviews: (current.reviews || []).map(item => ({ ...item }))
   };
   const result = mutator(draft);
   if (result?.error) return result;
@@ -124,28 +126,37 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
   return order;
 }
 
-export function recordTestPayment(orderId, method) {
+export function recordTestPayment(orderId, method, outcome = "success") {
   let payment;
+  const outcomes = {
+    success: { status: "test_authorized", label: "Authorised" },
+    pending: { status: "payment_pending", label: "Pending" },
+    failed: { status: "test_failed", label: "Failed" },
+    cancelled: { status: "test_cancelled", label: "Cancelled by customer" }
+  };
   const result = updateWorkflow(draft => {
-    const order = draft.orders.find(item => item.id === orderId);
-    if (!order) return { error: "Order not found. Please return to the patient shop." };
+    const order = draft.orders.find(item => item.id === orderId && item.testOnly === true);
+    if (!order) return { error: "Test order not found. Please return to the patient shop." };
     if (order.status === "cancelled" || order.paymentStatus === "test_refunded") return { error: "This order is cancelled and cannot be paid again." };
-    if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId && item.type !== "refund") };
+    if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId && item.type !== "refund" && item.status === "test_authorized") };
+    if (!SIMULATION_CONFIG.paymentMethods.some(item => item.id === method)) return { error: "Choose an available simulated payment method." };
+    const selectedOutcome = outcomes[outcome];
+    if (!selectedOutcome) return { error: "Choose a valid simulated payment outcome." };
+    const now = new Date().toISOString();
     payment = {
       id: "HRC-PAY-" + Date.now().toString(36).toUpperCase(),
-      orderId,
-      amount: order.total,
-      method,
-      status: "test_authorized",
-      testOnly: true,
-      fundsMoved: false,
-      createdAt: new Date().toISOString()
+      orderId, amount: Number(order.total), currency: SIMULATION_CONFIG.currency,
+      method, provider: SIMULATION_CONFIG.paymentMethods.find(item => item.id === method).provider,
+      status: selectedOutcome.status, outcome, type: "payment", testOnly: true, fundsMoved: false,
+      createdAt: now, updatedAt: now
     };
     draft.payments.unshift(payment);
     order.paymentMethod = method;
     order.paymentId = payment.id;
-    order.paymentStatus = "test_authorized";
-    order.status = "awaiting_pharmacy";
+    order.paymentStatus = selectedOutcome.status;
+    if (outcome === "success") order.status = "awaiting_pharmacy";
+    order.updatedAt = now;
+    order.statusHistory = [...(order.statusHistory || []), { status: selectedOutcome.status, at: now, testOnly: true, actor: "simulated-payment-adapter" }];
     return { value: payment };
   });
   if (result?.error) throw new Error(result.error);
@@ -283,40 +294,35 @@ export function transitionTestPrescription(prescriptionId, nextStatus, reviewNot
 
 // Payment adapter seam: replace this implementation with a hosted gateway and
 // verified server webhook when production credentials and backend are configured.
-export function simulateTestBookingPayment(bookingId, method) {
+export function simulateTestBookingPayment(bookingId, method, outcome = "success") {
   let payment;
+  const outcomes = { success: "test_authorized", pending: "payment_pending", failed: "test_failed", cancelled: "test_cancelled" };
   const result = updateWorkflow(draft => {
     const booking = draft.bookings.find(item => item.id === bookingId && item.testOnly === true);
     if (!booking) return { error: "Booking not found. Refresh Activities and try again." };
     if (booking.status !== "accepted") return { error: "The provider must accept the request before payment." };
-    if (booking.paymentStatus === "test_authorized") {
-      return { value: draft.payments.find(item => item.bookingId === bookingId) || null };
-    }
+    if (booking.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.bookingId === bookingId && item.status === "test_authorized") || null };
     const selectedMethod = SIMULATION_CONFIG.paymentMethods.find(item => item.id === method);
     const amount = Number(booking.servicePrice ?? booking.consultationFee);
     if (!selectedMethod) return { error: "Choose an available test payment method." };
     if (!Number.isFinite(amount) || amount <= 0) return { error: "A valid service price is not configured, so checkout is unavailable." };
+    if (!outcomes[outcome]) return { error: "Choose a valid simulated payment outcome." };
     const now = new Date().toISOString();
     payment = {
       id: "HRC-PAY-" + Date.now().toString(36).toUpperCase(),
-      bookingId,
-      amount,
-      currency: SIMULATION_CONFIG.currency,
-      method: selectedMethod.id,
-      provider: selectedMethod.provider,
-      status: "test_authorized",
-      testOnly: true,
-      fundsMoved: false,
-      idempotencyKey: "booking-" + bookingId,
-      createdAt: now
+      bookingId, amount, currency: SIMULATION_CONFIG.currency,
+      method: selectedMethod.id, provider: selectedMethod.provider,
+      status: outcomes[outcome], outcome, type: "payment", testOnly: true, fundsMoved: false,
+      idempotencyKey: "booking-" + bookingId, createdAt: now, updatedAt: now
     };
     draft.payments.unshift(payment);
     booking.paymentMethod = selectedMethod.id;
     booking.paymentId = payment.id;
-    booking.paymentStatus = "test_authorized";
-    booking.status = "confirmed";
+    booking.paymentStatus = outcomes[outcome];
+    if (outcome === "success") booking.status = "confirmed";
     booking.updatedAt = now;
-    booking.statusHistory = [...(booking.statusHistory || []), { status: "test_authorized", at: now, testOnly: true }, { status: "confirmed", at: now, testOnly: true }];
+    booking.statusHistory = [...(booking.statusHistory || []), { status: outcomes[outcome], at: now, testOnly: true, actor: "simulated-payment-adapter" }];
+    if (outcome === "success") booking.statusHistory.push({ status: "confirmed", at: now, testOnly: true });
     return { value: payment };
   });
   if (result?.error) throw new Error(result.error);
@@ -370,13 +376,32 @@ export function useTestWorkflow() {
   return { ...state, refresh };
 }
 
+export function submitTestReview({ bookingId, rating, comment = "" }) {
+  const score = Number(rating);
+  const text = String(comment || "").trim().slice(0, 1000);
+  return updateWorkflow(draft => {
+    const booking = draft.bookings.find(item => item.id === bookingId && item.testOnly === true);
+    if (!booking) return { error: "Completed test booking not found." };
+    if (booking.status !== "completed") return { error: "A review is available only after the provider marks the booking completed." };
+    if (!Number.isInteger(score) || score < 1 || score > 5) return { error: "Choose a rating from 1 to 5 stars." };
+    if (draft.reviews.some(item => item.bookingId === bookingId && item.testOnly === true)) return { error: "A review has already been submitted for this booking." };
+    const review = { id: "HRC-REV-" + Date.now().toString(36).toUpperCase(), bookingId, providerId: booking.providerId, providerName: booking.providerName, kind: booking.kind, rating: score, comment: text, createdAt: new Date().toISOString(), testOnly: true };
+    draft.reviews.unshift(review);
+    booking.reviewId = review.id;
+    booking.reviewedAt = review.createdAt;
+    booking.updatedAt = review.createdAt;
+    return { value: review };
+  });
+}
+
 export function transitionTestBooking(bookingId, nextStatus) {
-  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: ["declined"], confirmed: [], declined: [], completed: [] };
+  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: ["declined"], confirmed: ["completed"], declined: [], completed: [] };
   return updateWorkflow(draft => {
     const booking = draft.bookings.find(item => item.id === bookingId);
     if (!booking) return { error: "Test request not found. Refresh and try again." };
     if (booking.testOnly !== true) return { error: "This action is only available for test requests." };
     if (!(allowed[booking.status] || []).includes(nextStatus)) return { error: `Cannot change this request from ${booking.status} to ${nextStatus}.` };
+    if (nextStatus === "completed" && booking.paymentStatus !== "test_authorized") return { error: "A successful simulated payment is required before completing this booking." };
     booking.status = nextStatus;
     booking.updatedAt = new Date().toISOString();
     booking.providerResponseAt = booking.providerResponseAt || booking.updatedAt;

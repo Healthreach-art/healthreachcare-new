@@ -27,7 +27,9 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
     if (result?.error) setError(result.error);
     else setNotice(status === "accepted"
       ? "Request accepted. The patient can now complete the simulated checkout from Activities."
-      : "Request declined. The patient activity and status history have been updated in this browser.");
+      : status === "completed"
+        ? "Service marked completed in the local workflow. The patient can now leave a review."
+        : "Request declined. The patient activity and status history have been updated in this browser.");
   };
 
   return <section className="page-content provider-workspace">
@@ -61,7 +63,7 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
         </div>
         {pending && <div className="provider-request-actions"><button className="button button-primary" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "accepted")}>{busyId === item.id ? "Saving…" : <><CheckCircle2 size={16}/> Accept request</>}</button><button className="button button-outline" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "declined")}><XCircle size={16}/> Decline</button></div>}
         {item.status === "accepted" && <div className="inline-message"><Wallet size={17}/><span>Accepted. The patient can now pay using the simulated checkout in Activities. Confirmation occurs only after the simulated payment is recorded.</span></div>}
-        {item.status === "confirmed" && <div className="inline-message"><CheckCircle2 size={17}/><span>Confirmed in sandbox after simulated payment authorisation. No real money moved and no real visit was booked.</span></div>}
+        {item.status === "confirmed" && <div className="inline-message"><CheckCircle2 size={17}/><span>Confirmed in sandbox after simulated payment authorisation. No real money moved and no real visit was booked.</span></div>}{item.status === "confirmed" && <div className="provider-request-actions"><button className="button button-primary" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "completed")}><CheckCircle2 size={16}/> Mark service completed</button></div>}{item.status === "completed" && <div className="inline-message"><CheckCircle2 size={17}/><span>Service completed in the sandbox. Patient review is now enabled in Activities.</span></div>}
         {item.status === "declined" && <div className="inline-message"><AlertCircle size={17}/><span>This request was declined in the sandbox. A production version should capture a reason and notify the patient.</span></div>}
         {Array.isArray(item.statusHistory) && item.statusHistory.length > 0 && <details className="provider-status-history"><summary>Request history ({item.statusHistory.length})</summary>{item.statusHistory.map((event,index)=><p key={event.at + "-" + index}><strong>{readable(event.status)}</strong><span>{formatDate(event.at)}</span></p>)}</details>}
       </article>;
