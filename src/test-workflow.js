@@ -129,7 +129,8 @@ export function recordTestPayment(orderId, method) {
   const result = updateWorkflow(draft => {
     const order = draft.orders.find(item => item.id === orderId);
     if (!order) return { error: "Order not found. Please return to the patient shop." };
-    if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId) };
+    if (order.status === "cancelled" || order.paymentStatus === "test_refunded") return { error: "This order is cancelled and cannot be paid again." };
+    if (order.paymentStatus === "test_authorized") return { value: draft.payments.find(item => item.orderId === orderId && item.type !== "refund") };
     payment = {
       id: "TEST-PAY-" + Date.now().toString(36).toUpperCase(),
       orderId,
@@ -180,8 +181,34 @@ export function transitionTestOrder(orderId, nextStatus) {
       }
       order.stockDeducted = true;
     }
+    if (nextStatus === "cancelled") {
+      if (order.stockDeducted && !order.stockRestocked) {
+        for (const line of order.items) {
+          const product = draft.inventory.find(item => item.id === line.productId);
+          if (product) product.stock = Number(product.stock || 0) + Number(line.quantity || 0);
+        }
+        order.stockRestocked = true;
+      }
+      if (order.paymentStatus === "test_authorized") {
+        const refund = {
+          id: "TEST-REF-" + Date.now().toString(36).toUpperCase(),
+          orderId,
+          amount: Number(order.total || 0),
+          method: order.paymentMethod,
+          status: "test_refunded",
+          type: "refund",
+          testOnly: true,
+          fundsMoved: false,
+          createdAt: new Date().toISOString()
+        };
+        draft.payments.unshift(refund);
+        order.refundId = refund.id;
+        order.paymentStatus = "test_refunded";
+      }
+    }
     order.status = nextStatus;
     order.updatedAt = new Date().toISOString();
+    order.statusHistory = [...(order.statusHistory || []), { status: nextStatus, at: order.updatedAt, testOnly: true }];
     return { value: order };
   });
 }
