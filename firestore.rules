@@ -60,6 +60,7 @@ service cloud.firestore {
          resource.data.requestStatus == 'pending' &&
          request.resource.data.requestStatus in ['accepted', 'declined'] &&
          request.resource.data.status == request.resource.data.requestStatus &&
+         request.resource.data.paymentStatus == resource.data.paymentStatus &&
          request.resource.data.acceptedBy == (request.resource.data.requestStatus == 'accepted' ? uid() : null) &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
            'status', 'requestStatus', 'acceptedBy', 'acceptedAt',
