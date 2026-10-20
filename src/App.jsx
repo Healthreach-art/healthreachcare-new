@@ -3,7 +3,7 @@ import {
   Activity, ArrowRight, Bell, CalendarDays, ChevronRight,
   HeartPulse, Home, MapPin, Pill, Moon, Sun,
   ShieldCheck, Stethoscope, UserRound, Video, Phone,
-  Upload, House, MessageCircle, AlertCircle, X
+  Upload, House, MessageCircle, AlertCircle, X, Mail, MapPin, LockKeyhole, BellRing, LogOut, Save
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
@@ -22,6 +22,10 @@ function Brand() {
 function App() {
   const [page, setPage] = useState("landing");
   const [user] = useState(null);
+  const [accountDetails, setAccountDetails] = useState(() => {
+    const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
+    try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
+  });
   const [notifications, setNotifications] = useState([]);
   const [notificationError] = useState("Testing mode: notifications are not connected.");
   const [showNotifications, setShowNotifications] = useState(false);
@@ -85,17 +89,76 @@ function App() {
       </div>
     </div>
 
+    <div className="dashboard-panel">
+      <div className="dashboard-panel-heading">
+        <span className="dashboard-panel-icon tracker-icon"><Activity size={20}/></span>
+        <div><div className="eyebrow">YOUR CARE JOURNEY</div><h2>Care tracker</h2><p>Follow the progress of your appointments and care requests.</p></div>
+      </div>
+      <div className="tracker-layout">
+        <div className="tracker-timeline">
+          <div className="timeline-step"><span className="timeline-dot"><CalendarDays size={17}/></span><div><strong>Request care when you need it</strong><p>Choose a doctor, homecare service or medicine order from the Home screen.</p></div></div>
+          <div className="timeline-step"><span className="timeline-dot muted-dot"><Bell size={17}/></span><div><strong>Check Activities for updates</strong><p>Requests created in this browser appear in Activities while this test preview is in use.</p></div></div>
+          <div className="timeline-step"><span className="timeline-dot muted-dot"><ShieldCheck size={17}/></span><div><strong>Provider and payment connections pending</strong><p>This preview does not contact a real provider or confirm real appointments or payments.</p></div></div>
+        </div>
+        <div className="tracker-map-placeholder"><HeartPulse size={30}/><strong>Your care, in one place</strong><p>Once connected, confirmed requests and their status will be shown here. No live tracking is available in this preview.</p></div>
+      </div>
+    </div>
+    <div className="dashboard-panel">
+      <div className="dashboard-panel-heading recent-heading">
+        <span className="dashboard-panel-icon recent-icon"><Activity size={20}/></span>
+        <div><div className="eyebrow">YOUR LATEST UPDATES</div><h2>Recent activity</h2><p>A quick look at your latest care requests.</p></div>
+        <button className="text-button" onClick={() => setPage("activities")}>View activities <ArrowRight size={15}/></button>
+      </div>
+      {(() => { let items = []; try { items = JSON.parse(localStorage.getItem("healthreachcare-test-bookings") || "[]"); } catch {} return items.length ? items.slice(0,3).map(item => <div className="notification-item" key={item.id}><span className="notification-dot"/><div><strong>{item.serviceType || "Care request"}</strong><p>{item.requestedDate || "Date not set"} · {item.requestedTime || "Time not set"} · {String(item.status || "pending").replace(/_/g," ")}</p><small>Local test request · {item.providerName || "Provider not assigned"}</small></div></div>) : <div className="dashboard-empty recent-empty"><CalendarDays size={24}/><div><strong>No recent activity yet</strong><p>Your appointments and homecare requests will appear here after you create one.</p></div></div>; })()}
+    </div>
+
   </section>;
 
   const renderActivities = () => { let careRequests=[]; try { careRequests=JSON.parse(localStorage.getItem("healthreachcare-test-bookings")||"[]"); } catch {} return <section className="page-content"><div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Your care requests and updates.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><CalendarDays/></div><div><h2>Care requests</h2><p>Requests made in this browser</p></div></div>{careRequests.length ? careRequests.map(item=><div className="notification-item" key={item.id}><span className="notification-dot"/><div><strong>{item.serviceType || "Care request"}</strong><p>{item.requestedDate || "Date not set"} · {item.requestedTime || "Time not set"} · {String(item.status || "pending").replace(/_/g," ")}</p><small>Test request · {item.providerName || "Provider review pending"}</small></div></div>) : <div className="empty-state"><CalendarDays size={26}/><h3>No care requests yet</h3><p>Your homecare and appointment requests will appear here.</p></div>}</div><div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Account updates</p></div></div>{notificationError ? <div className="inline-message"><AlertCircle size={18}/><span>Notifications will appear here when connected.</span></div> : notifications.length ? notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div></div>) : <div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>Updates will appear here when available.</p></div>}</div></section>; };
 
   const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>Testing mode is active. Live pharmacy stock is not connected; no invented products or prices are shown.</span></div><button className="button button-primary" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
 
-  const renderAccount = () => <section className="page-content">
-    <div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your HealthReachCare account connection will be added when the backend is selected.</p>
-    <div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>Account setup pending</h2><p className="muted">No authentication provider is installed or connected in this repository.</p></div><span className="account-status"><span className="status-dot status-muted"/>Not connected</span></div>
-    <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Ready for a future backend</h2><p>The UI is kept separate from the authentication and data-service layer so a backend can be added later without rebuilding the screens.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>No account is created, no personal information is stored, and no request or payment can be submitted from this preview.</span></div></div>
-    <div className="panel"><h2>Need help?</h2><p className="muted">Contact HealthReachCare support for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured.")}><MessageCircle size={17}/> Contact support</button></div>
+  const renderAccount = () => <section className="page-content account-page">
+    <div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Manage your profile, contact details and preferences.</p>
+    <div className="panel account-panel">
+      <div className="account-avatar"><UserRound size={28}/></div>
+      <div><h2>Patient profile</h2><p className="muted">Profile settings in this preview are saved only in this browser.</p></div>
+      <span className="account-status"><span className="status-dot status-muted"/>Preview mode</span>
+    </div>
+    <form className="panel account-settings-form" onSubmit={event => { event.preventDefault(); try { localStorage.setItem("healthreachcare-test-account", JSON.stringify(accountDetails)); setNotice("Your profile changes were saved in this browser only."); } catch { setNotice("Could not save your profile in this browser. Check storage settings."); } }}>
+      <div className="panel-heading"><div className="panel-icon"><UserRound/></div><div><h2>Personal and contact details</h2><p>Keep your patient profile details up to date.</p></div></div>
+      <div className="account-fields-grid">
+        <label>Full name<input value={accountDetails.name} onChange={e=>setAccountDetails({...accountDetails,name:e.target.value})} placeholder="Enter your full name" autoComplete="name"/></label>
+        <label>Phone number<input type="tel" value={accountDetails.phone} onChange={e=>setAccountDetails({...accountDetails,phone:e.target.value})} placeholder="e.g. 082 123 4567" autoComplete="tel"/></label>
+        <label>Email address<input type="email" value={accountDetails.email} onChange={e=>setAccountDetails({...accountDetails,email:e.target.value})} placeholder="you@example.com" autoComplete="email"/></label>
+        <label>Date of birth<input type="date" value={accountDetails.dob} onChange={e=>setAccountDetails({...accountDetails,dob:e.target.value})} /></label>
+        <label className="account-address-field">Home address<input value={accountDetails.address} onChange={e=>setAccountDetails({...accountDetails,address:e.target.value})} placeholder="Street, suburb, town or city" autoComplete="street-address"/></label>
+      </div>
+      <div className="account-form-actions"><button className="button button-primary" type="submit"><Save size={16}/> Save profile</button><span className="muted small">Local preview only — not synced to a server.</span></div>
+    </form>
+    <div className="panel">
+      <div className="panel-heading"><div className="panel-icon"><LockKeyhole/></div><div><h2>Login and security</h2><p>Secure access and account verification.</p></div></div>
+      <div className="account-setting-row"><span className="account-setting-icon"><Mail size={18}/></span><div><strong>Email verification</strong><p className="muted">Not available — sign-in and email verification are not connected yet.</p></div><span className="account-status">Not connected</span></div>
+      <div className="account-setting-row"><span className="account-setting-icon"><LockKeyhole size={18}/></span><div><strong>Password and sign-in</strong><p className="muted">Password changes and secure login require the authentication service to be connected.</p></div><span className="account-status">Pending</span></div>
+    </div>
+    <div className="panel">
+      <div className="panel-heading"><div className="panel-icon"><BellRing/></div><div><h2>Notification preferences</h2><p>Choose the updates you would like to receive in the connected app.</p></div></div>
+      <label className="account-preference"><span><strong>Appointment and care updates</strong><small>Booking status and provider responses</small></span><input type="checkbox" checked={accountDetails.careNotifications} onChange={e=>setAccountDetails({...accountDetails,careNotifications:e.target.checked})}/></label>
+      <label className="account-preference"><span><strong>Medication reminders</strong><small>Reminders you set for your medicines</small></span><input type="checkbox" checked={accountDetails.medicationReminders} onChange={e=>setAccountDetails({...accountDetails,medicationReminders:e.target.checked})}/></label>
+      <label className="account-preference"><span><strong>Service announcements</strong><small>Important HealthReachCare service information</small></span><input type="checkbox" checked={accountDetails.announcements} onChange={e=>setAccountDetails({...accountDetails,announcements:e.target.checked})}/></label>
+      <button className="button button-outline account-save-preferences" onClick={()=>{try{localStorage.setItem("healthreachcare-test-account",JSON.stringify(accountDetails));setNotice("Your preferences were saved in this browser only.");}catch{setNotice("Could not save preferences in this browser.");}}}><Save size={16}/> Save preferences</button>
+    </div>
+    <div className="panel">
+      <div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Privacy and consent</h2><p>Use test information only until secure account services are connected.</p></div></div>
+      <div className="inline-message"><AlertCircle size={18}/><span>This preview is not a secure medical record system. Do not enter sensitive health information. Profile settings are stored locally on this device and are not sent to HealthReachCare.</span></div>
+    </div>
+    <div className="panel">
+      <div className="panel-heading"><div className="panel-icon"><MessageCircle/></div><div><h2>Help and support</h2><p>Need help with an appointment, medicine order or homecare request?</p></div></div>
+      <p className="muted">Support contact details have not yet been configured.</p>
+      <button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured.")}><MessageCircle size={17}/> Contact support</button>
+    </div>
+    <div className="panel account-logout-panel"><div><h2>Sign out</h2><p className="muted">The current preview does not have a signed-in account session.</p></div><button className="button button-outline" onClick={()=>{setPage("landing");setNotice("");}}><LogOut size={16}/> Return to welcome screen</button></div>
+    {notice && <div className="inline-message"><AlertCircle size={18}/><span>{notice}</span></div>}
   </section>;
 
   if (page === "landing") return <TestingLanding onOpenAuth={() => setPage("auth")} />;
