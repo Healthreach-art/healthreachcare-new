@@ -321,6 +321,37 @@ export function simulateTestBookingPayment(bookingId, method) {
   return payment || result?.value;
 }
 
+export function cancelTestBooking(bookingId) {
+  const result = updateWorkflow(draft => {
+    const booking = draft.bookings.find(item => item.id === bookingId && item.testOnly === true);
+    if (!booking) return { error: "Booking not found. Refresh Activities and try again." };
+    if (!["awaiting_provider_review", "accepted", "confirmed"].includes(booking.status)) return { error: "This booking can no longer be cancelled from the sandbox." };
+    const now = new Date().toISOString();
+    if (booking.paymentStatus === "test_authorized" && !booking.refundId) {
+      const refund = {
+        id: "TEST-REF-" + Date.now().toString(36).toUpperCase(),
+        bookingId,
+        amount: Number(booking.servicePrice ?? booking.consultationFee ?? 0),
+        method: booking.paymentMethod,
+        status: "test_refunded",
+        type: "refund",
+        testOnly: true,
+        fundsMoved: false,
+        createdAt: now
+      };
+      draft.payments.unshift(refund);
+      booking.refundId = refund.id;
+      booking.paymentStatus = "test_refunded";
+    }
+    booking.status = "cancelled";
+    booking.cancelledAt = now;
+    booking.updatedAt = now;
+    booking.statusHistory = [...(booking.statusHistory || []), { status: "cancelled", at: now, testOnly: true }];
+    return { value: booking };
+  });
+  return result;
+}
+
 export function useTestWorkflow() {
   const [state, setState] = useState(() => readWorkflow());
   const refresh = useCallback(() => setState(readWorkflow()), []);
