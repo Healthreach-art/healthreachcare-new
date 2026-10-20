@@ -383,7 +383,7 @@ export function useTestWorkflow() {
 export function saveTestEnquiry({ type, patientName, phone, email = "", location = "", details, service = "", date = "", time = "", duration = "" }) {
   const allowed = ["prescription", "support"];
   if (!allowed.includes(type)) return { error: "Choose a supported enquiry type." };
-  if (!String(patientName || "").trim() || !String(phone || "").trim()) return { error: "Name and contact number are required." };
+  if (!String(patientName || "").trim() || (type === "prescription" && !String(phone || "").trim())) return { error: type === "prescription" ? "Name and contact number are required." : "Enter your name before sending the support request." };
   if (String(details || "").trim().length < 3) return { error: "Please add a short description." };
   const now = new Date().toISOString();
   const enquiry = {
