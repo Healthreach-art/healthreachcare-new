@@ -62,8 +62,8 @@ export async function claimDelivery(orderId,driverId,driverName) {
     if(!o) return {error:"Demo delivery not found. Refresh the queue."};
     if(o.fulfilment!=="delivery"||o.status!=="ready_for_delivery") return {error:"This delivery is no longer available."};
     if(o.driverId) return {error:"Another driver has already accepted this delivery. Refresh the queue."};
-    o.driverId=driverId;o.driverName=String(driverName||driverId).slice(0,80);o.deliveryStage="accepted";
-    o.driverAcceptedAt=history(o,o.status,driverId,"driver_accepted");
+    o.driverId=driverId;o.driverName=String(driverName||driverId).slice(0,80);o.deliveryStage="accepted";o.status="driver_assigned";
+    o.driverAcceptedAt=history(o,"driver_assigned",driverId,"driver_accepted");
     return {value:o};
   });
   return r?.error?result(null,r.error):result(clone(r.value));
@@ -74,7 +74,7 @@ export async function confirmPickup(orderId,driverId,checklist={}) {
     const o=d.orders.find(x=>isDemo(x)&&x.id===orderId);
     if(!o) return {error:"Demo delivery not found."};
     if(o.driverId!==driverId) return {error:"This delivery belongs to another demo driver."};
-    if(o.status!=="ready_for_delivery"||o.deliveryStage!=="accepted") return {error:"Pickup requires an accepted delivery and can happen only once."};
+    if(o.status!=="driver_assigned"||o.deliveryStage!=="accepted") return {error:"Pickup requires an accepted delivery and can happen only once."};
     o.status="picked_up";o.deliveryStage="picked_up";o.pickupConfirmedAt=history(o,"picked_up",driverId,"pickup_confirmed");
     return {value:o};
   });
