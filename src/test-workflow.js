@@ -397,6 +397,21 @@ export function saveTestEnquiry({ type, patientName, phone, email = "", location
   return result?.error ? result : { value: enquiry };
 }
 
+export function transitionTestEnquiry(enquiryId, nextStatus, note = "") {
+  const allowed = { awaiting_admin_review: ["in_review", "resolved", "rejected"], in_review: ["awaiting_admin_review", "resolved", "rejected"], resolved: ["in_review"], rejected: ["in_review"] };
+  return updateWorkflow(draft => {
+    const item = (draft.enquiries || []).find(entry => entry.id === enquiryId && entry.testOnly === true);
+    if (!item) return { error: "Test enquiry not found." };
+    if (!(allowed[item.status] || []).includes(nextStatus)) return { error: "This enquiry status transition is not allowed." };
+    const at = new Date().toISOString();
+    item.status = nextStatus;
+    item.reviewNote = String(note || "").trim().slice(0,500);
+    item.updatedAt = at;
+    item.statusHistory = [...(item.statusHistory || []), { status: nextStatus, at, testOnly: true, actor: "admin-preview" }];
+    return { value: item };
+  });
+}
+
 export function sendTestMessage({ requestId, requestType = "booking", senderRole, senderName, body }) {
   const text = String(body || "").trim();
   const allowedRoles = ["patient", "doctor", "homecare", "pharmacy", "driver", "admin"];
