@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Activity, AlertCircle, ArrowRight, Banknote, Bell, CheckCircle2, ClipboardCheck, Clock3, Package, Pill, RefreshCw, Search, ShieldCheck, Truck, XCircle } from "lucide-react";
+import { useState } from "react";
+import { Activity, AlertCircle, ArrowRight, Banknote, CheckCircle2, ClipboardCheck, Package, Pill, RefreshCw, Search, ShieldCheck, Truck, XCircle } from "lucide-react";
 import { transitionTestOrder, transitionTestPrescription, updateWorkflow, useTestWorkflow } from "./test-workflow.js";
 import "./PharmacyWorkspace.css";
 
@@ -10,10 +10,6 @@ const nextActions = {
   awaiting_pharmacy: [{ status: "accepted", label: "Accept order", Icon: CheckCircle2 }, { status: "cancelled", label: "Reject / cancel", Icon: XCircle }],
   accepted: [{ status: "preparing", label: "Start preparation", Icon: Package }, { status: "cancelled", label: "Cancel order", Icon: XCircle }],
   preparing: [{ status: "ready_for_delivery", label: "Ready for delivery", Icon: Truck }, { status: "ready_for_pickup", label: "Ready for pickup", Icon: CheckCircle2 }],
-  ready_for_delivery: [{ status: "driver_assigned", label: "Assign demo driver", Icon: Truck }],
-  driver_assigned: [{ status: "picked_up", label: "Confirm pickup", Icon: Package }],
-  picked_up: [{ status: "out_for_delivery", label: "Out for delivery", Icon: Truck }],
-  out_for_delivery: [{ status: "delivered", label: "Mark delivered", Icon: CheckCircle2 }]
 };
 
 export default function PharmacyWorkspace({ onBack }) {
