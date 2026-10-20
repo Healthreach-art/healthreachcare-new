@@ -24,9 +24,9 @@ function makeSeed(draft) {
     items:[{productId:"test-ors",name:"Oral rehydration salts (demo item)",quantity:1,unitPrice:12,lineTotal:12,prescriptionRequired:false}],
     notes:"Synthetic test order only. Contains no real patient information.",
     fulfilment:"delivery",subtotal:12,deliveryFee:35,driverEarnings:25,total:47,
-    status:"awaiting_pharmacy",paymentStatus:"test_authorized",paymentMethod:"simulated-demo-payment",
+    status:"ready_for_delivery",deliveryStage:"ready_for_delivery",paymentStatus:"test_authorized",paymentMethod:"simulated-demo-payment",
     paymentId,stockDeducted:false,createdAt:time,updatedAt:time,testOnly:true,
-    statusHistory:[{status:"awaiting_pharmacy",at:time,actor:"driver-demo-seed",testOnly:true}]
+    statusHistory:[{status:"awaiting_pharmacy",at:time,actor:"driver-demo-seed",testOnly:true},{status:"accepted",at:time,actor:"synthetic-pharmacy",testOnly:true},{status:"preparing",at:time,actor:"synthetic-pharmacy",testOnly:true},{status:"ready_for_delivery",at:time,actor:"synthetic-pharmacy",testOnly:true}]
   };
   draft.orders.unshift(order);
   draft.payments.unshift({id:paymentId,orderId:id,amount:47,currency:"ZAR",method:"simulated-demo-payment",provider:"driver-demo-adapter",status:"test_authorized",type:"payment",testOnly:true,fundsMoved:false,createdAt:time,updatedAt:time});
@@ -57,14 +57,14 @@ export function resetDemoData() {
   return r.value;
 }
 export async function listAvailableDeliveries() {
-  return readWorkflow().orders.filter(o=>isDemo(o)&&o.fulfilment==="delivery"&&o.status==="ready_for_delivery"&&!o.driverId).map(clone);
+  return readWorkflow().orders.filter(o=>o.testOnly===true&&o.fulfilment==="delivery"&&o.status==="ready_for_delivery"&&!o.driverId).map(clone);
 }
 export async function getDelivery(orderId) { return clone(readWorkflow().orders.find(o=>isDemo(o)&&o.id===orderId)); }
 /** Best-effort local claim. Production must use an atomic server-side conditional update. */
 export async function claimDelivery(orderId,driverId,driverName) {
   if(!String(driverId||"").trim()) return result(null,"Choose a demo driver first.");
   const r=updateWorkflow(d=>{
-    const o=d.orders.find(x=>isDemo(x)&&x.id===orderId);
+    const o=d.orders.find(x=>x.testOnly===true&&x.id===orderId);
     if(!o) return {error:"Demo delivery not found. Refresh the queue."};
     if(o.fulfilment!=="delivery"||o.status!=="ready_for_delivery") return {error:"This delivery is no longer available."};
     if(o.driverId) return {error:"Another driver has already accepted this delivery. Refresh the queue."};
@@ -77,7 +77,7 @@ export async function claimDelivery(orderId,driverId,driverName) {
 export async function confirmPickup(orderId,driverId,checklist={}) {
   if(checklist.reference!==true||checklist.package!==true) return result(null,"Confirm both the order reference and sealed package.");
   const r=updateWorkflow(d=>{
-    const o=d.orders.find(x=>isDemo(x)&&x.id===orderId);
+    const o=d.orders.find(x=>x.testOnly===true&&x.id===orderId);
     if(!o) return {error:"Demo delivery not found."};
     if(o.driverId!==driverId) return {error:"This delivery belongs to another demo driver."};
     if(o.status!=="driver_assigned"||o.deliveryStage!=="accepted") return {error:"Pickup requires an accepted delivery and can happen only once."};
@@ -89,7 +89,7 @@ export async function confirmPickup(orderId,driverId,checklist={}) {
 export async function updateDeliveryStatus(orderId,nextStatus,driverId) {
   if(nextStatus!=="out_for_delivery") return result(null,"Use pickup or simulated proof-of-delivery confirmation for this step.");
   const r=updateWorkflow(d=>{
-    const o=d.orders.find(x=>isDemo(x)&&x.id===orderId);
+    const o=d.orders.find(x=>x.testOnly===true&&x.id===orderId);
     if(!o) return {error:"Demo delivery not found."};
     if(o.driverId!==driverId) return {error:"This delivery belongs to another demo driver."};
     if(o.status!=="picked_up"||o.deliveryStage!=="picked_up"||!o.pickupConfirmedAt) return {error:"Complete the pickup checklist before starting delivery."};
@@ -101,7 +101,7 @@ export async function updateDeliveryStatus(orderId,nextStatus,driverId) {
 export async function confirmDelivery(orderId,driverId,confirmation={}) {
   if(confirmation.confirmed!==true) return result(null,"Confirm the simulated recipient handover to complete this demo.");
   const r=updateWorkflow(d=>{
-    const o=d.orders.find(x=>isDemo(x)&&x.id===orderId);
+    const o=d.orders.find(x=>x.testOnly===true&&x.id===orderId);
     if(!o) return {error:"Demo delivery not found."};
     if(o.driverId!==driverId) return {error:"This delivery belongs to another demo driver."};
     if(o.status!=="out_for_delivery"||o.deliveryStage!=="out_for_delivery") return {error:"Only an out-for-delivery order can be completed."};
@@ -115,7 +115,7 @@ export async function confirmDelivery(orderId,driverId,confirmation={}) {
   return r?.error?result(null,r.error):result(clone(r.value));
 }
 export async function getDeliveryHistory(driverId) {
-  return readWorkflow().orders.filter(o=>isDemo(o)&&o.driverId===driverId&&o.status==="delivered")
+  return readWorkflow().orders.filter(o=>o.testOnly===true&&o.driverId===driverId&&o.status==="delivered")
     .sort((a,b)=>new Date(b.deliveryCompletedAt||b.updatedAt)-new Date(a.deliveryCompletedAt||a.updatedAt)).map(clone);
 }
 export async function getDriverEarnings(driverId) {
