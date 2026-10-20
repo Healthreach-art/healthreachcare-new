@@ -9,7 +9,7 @@ import {
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
 import PrescriptionSandbox from "./PrescriptionSandbox.jsx";
-import { cancelTestBooking, readWorkflow, sendTestMessage, simulateTestBookingPayment, submitTestReview, useTestWorkflow, SIMULATION_CONFIG } from "./test-workflow.js";
+import { cancelTestBooking, readWorkflow, saveTestBooking, saveTestEnquiry, sendTestMessage, simulateTestBookingPayment, submitTestReview, useTestWorkflow, SIMULATION_CONFIG } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
 
 
@@ -232,9 +232,58 @@ function App() {
 
   const submitForm = event => {
     event.preventDefault();
-    setNotice("This request form is a UI preview only. No account, booking, prescription, provider notification or payment service is connected, so nothing was submitted.");
-    setFormType("");
-    setSubmittingRequest(false);
+    setSubmittingRequest(true);
+    try {
+      let saved;
+      if (formType === "prescription") {
+        const result = saveTestEnquiry({ type: "prescription", patientName: form.name, phone: form.phone, location: form.location, details: form.details });
+        if (result?.error) throw new Error(result.error);
+        saved = result.value;
+        setNotice("Prescription enquiry " + saved.id + " saved to the admin review queue in this browser. No prescription file was uploaded and no medicine was approved.");
+      } else {
+        const homecare = formType === "homecare";
+        const durationHours = homecare ? (Number.parseInt(form.duration, 10) || 2) : 0;
+        const serviceKey = ({ "Nursing care":"specialised_care", "Personal care":"personal_care", "Post-operative care":"post_surgery", "Elder care":"elderly_care", "Wound care":"specialised_care", "Other":"specialised_care" })[form.service];
+        const price = homecare
+          ? Number(SIMULATION_CONFIG.homecareHourlyRates[serviceKey] || SIMULATION_CONFIG.homecareHourlyRates.specialised_care) * durationHours
+          : 350;
+        saved = saveTestBooking({
+          kind: homecare ? "homecare" : "appointment",
+          type: homecare ? "homecare" : "appointment",
+          providerId: homecare ? "demo-homecare-provider" : "demo-doctor-provider",
+          providerName: homecare ? "Central homecare coordination (sandbox)" : (form.doctorName || "Unassigned test practitioner"),
+          patientName: form.name.trim(),
+          patientPhone: form.phone.trim(),
+          patientUid: "local-sandbox-patient",
+          location: form.location.trim(),
+          address: homecare ? form.location.trim() : "",
+          serviceType: homecare ? form.service : "Consultation · " + form.service,
+          service: homecare ? form.service : "Consultation · " + form.service,
+          consultationMode: homecare ? "In-person" : form.service,
+          doctorId: homecare ? "" : form.doctorId,
+          doctorName: homecare ? "" : (form.doctorName || "Unassigned test practitioner"),
+          consultationFee: homecare ? 0 : price,
+          servicePrice: price,
+          pricingUnit: homecare ? "illustrative ZAR test quote" : "illustrative ZAR test consultation quote",
+          duration: durationHours,
+          requestedDate: form.date,
+          requestedTime: form.time,
+          date: form.date,
+          time: form.time,
+          details: form.details.trim(),
+          healthConcern: homecare ? "" : form.details.trim(),
+          paymentProvider: SIMULATION_CONFIG.paymentAdapter
+        });
+        setNotice((homecare ? "Homecare request " : "Appointment request ") + saved.id + " saved. It is now visible in the matching provider workspace. The provider must accept it before simulated checkout; no real visit or payment has been created.");
+      }
+      workflow.refresh();
+      setFormType("");
+      setForm({name:"",phone:"",details:"",location:"",date:"",time:"",service:"",duration:"2 hours",doctorId:"",doctorName:""});
+    } catch (error) {
+      setNotice(error.message || "The test request could not be saved. Please try again.");
+    } finally {
+      setSubmittingRequest(false);
+    }
   };
 
   const renderHome = () => <section className="page-content">
