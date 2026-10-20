@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { saveTestBooking } from "../src/test-workflow.js";
 import {
   appendStatusHistory,
   canMessageBooking,
@@ -90,4 +91,8 @@ test("journey storage contains only explicitly test-marked records", () => {
   const filtered = readCareJourney(storage);
   assert.equal(filtered.messages.length, 0);
   assert.equal(filtered.notifications.length, 0);
+});
+
+test("homecare cannot be created in preview before fixed-price server-verified payment", () => {
+  assert.throws(() => saveTestBooking({ kind: "homecare", serviceType: "Personal care" }), /payment is verified server-side/);
 });
