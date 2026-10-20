@@ -112,7 +112,7 @@ function App() {
   const [page, setPage] = useState("landing");
   const [user] = useState(null);
   const [accountDetails, setAccountDetails] = useState(() => {
-    const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
+    const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true,signInAlerts:true,privacyMode:true,deviceLockReminder:false};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
   });
 
@@ -339,8 +339,12 @@ function App() {
     </form>
     <div className="panel">
       <div className="panel-heading"><div className="panel-icon"><LockKeyhole/></div><div><h2>Login and security</h2><p>Secure access and account verification.</p></div></div>
-      <div className="account-setting-row"><span className="account-setting-icon"><Mail size={18}/></span><div><strong>Email verification</strong><p className="muted">Not available — sign-in and email verification are not connected yet.</p></div><span className="account-status">Not connected</span></div>
-      <div className="account-setting-row"><span className="account-setting-icon"><LockKeyhole size={18}/></span><div><strong>Password and sign-in</strong><p className="muted">Password changes and secure login require the authentication service to be connected.</p></div><span className="account-status">Pending</span></div>
+      <div className="account-setting-row"><span className="account-setting-icon"><Mail size={18}/></span><div><strong>Email verification</strong><p className="muted">Verification state is unavailable until a real authenticated account exists. No email is treated as verified by this sandbox.</p></div><span className="account-status">Not connected</span></div>
+      <div className="account-setting-row"><span className="account-setting-icon"><LockKeyhole size={18}/></span><div><strong>Password, multi-factor sign-in and sessions</strong><p className="muted">No password is collected here. Password changes, MFA, active-session review and sign-out-everywhere require a server-backed identity service.</p></div><span className="account-status">Not connected</span></div>
+      <label className="account-preference"><span><strong>Sign-in and account alerts</strong><small>Preference only; no real security alert can be sent in sandbox mode.</small></span><input type="checkbox" checked={Boolean(accountDetails.signInAlerts)} onChange={e=>setAccountDetails({...accountDetails,signInAlerts:e.target.checked})}/></label>
+      <label className="account-preference"><span><strong>Privacy-conscious display</strong><small>Reminder to limit personal information on shared screens; this is not an access-control boundary.</small></span><input type="checkbox" checked={Boolean(accountDetails.privacyMode)} onChange={e=>setAccountDetails({...accountDetails,privacyMode:e.target.checked})}/></label>
+      <label className="account-preference"><span><strong>Remind me to lock my device</strong><small>Saved preference only; the app cannot lock your device.</small></span><input type="checkbox" checked={Boolean(accountDetails.deviceLockReminder)} onChange={e=>setAccountDetails({...accountDetails,deviceLockReminder:e.target.checked})}/></label>
+      <button type="button" className="button button-outline account-save-preferences" onClick={()=>{try{localStorage.setItem("healthreachcare-test-account",JSON.stringify(accountDetails));setNotice("Security preferences saved in this browser. They do not enable authentication or enforce security.");}catch{setNotice("Could not save security preferences in this browser.");}}}><Save size={16}/> Save security preferences</button>
     </div>
     <div className="panel">
       <div className="panel-heading"><div className="panel-icon"><BellRing/></div><div><h2>Notification preferences</h2><p>Choose the updates you would like to receive in the connected app.</p></div></div>
