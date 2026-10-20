@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { addDoc, collection, onSnapshot, query, orderBy, limit, serverTimestamp } from "firebase/firestore";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Menu, Pill, Search,
@@ -8,6 +8,7 @@ import {
   Upload, House, MessageCircle, AlertCircle, X
 } from "lucide-react";
 import { auth, db, firebaseConfigured } from "./firebase";
+import ProviderWorkspace from "./ProviderWorkspace.jsx";
 
 const specialties = ["All specialties","GP","Paediatrician","Cardiologist","Dermatologist","Gynaecologist","Psychiatrist","Psychologist","ENT","Ophthalmologist","Orthopaedic Surgeon","Neurologist","Endocrinologist","Urologist","Dentist","Physiotherapist"];
 const navItems = [
@@ -37,7 +38,8 @@ function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notice, setNotice] = useState("");
   const [formType, setFormType] = useState("");
-  const [form, setForm] = useState({name:"",phone:"",details:"",location:""});
+  const [form, setForm] = useState({name:"",phone:"",details:"",location:"",date:"",time:"",service:"",duration:"",doctorId:"",doctorName:""});
+  const [submittingRequest, setSubmittingRequest] = useState(false);
 
   useEffect(() => {
     if (!firebaseConfigured || !auth) return;
@@ -89,15 +91,77 @@ function App() {
       && (mode === "All modes" || String(d.consultationModes || d.consultationMode || d.consultationType || "").toLowerCase().includes(mode.toLowerCase()));
   }), [doctors, doctorSearch, specialty, mode]);
 
-  const openForm = type => {
+  const openForm = (type, extra = {}) => {
+    setNotice("");
     setFormType(type);
-    setForm({name:user?.displayName || "",phone:"",details:"",location:""});
+    setForm({
+      name:user?.displayName || "",
+      phone:"",
+      details:"",
+      location:"",
+      date:"",
+      time:"",
+      service:"",
+      duration:"2 hours",
+      doctorId:extra.doctorId || "",
+      doctorName:extra.doctorName || ""
+    });
   };
 
-  const submitForm = event => {
+  const submitForm = async event => {
     event.preventDefault();
-    setNotice("Your form is ready, but submission is not connected yet. Connect the approved HealthReachCare request workflow before accepting real bookings or orders.");
-    setFormType("");
+    if (submittingRequest) return;
+    if (!firebaseConfigured || !db) {
+      setNotice("Booking is unavailable because Firebase is not configured. No request has been sent.");
+      return;
+    }
+    if (!user) {
+      setNotice("Please sign in to submit a booking request. No request has been sent.");
+      return;
+    }
+    setSubmittingRequest(true);
+    try {
+      const isAppointment = formType === "appointment";
+      const collectionName = isAppointment ? "appointments" : formType === "homecare" ? "homecareRequests" : "prescriptionRequests";
+      const payload = {
+        patientUid: user.uid,
+        patientName: form.name.trim(),
+        patientPhone: form.phone.trim(),
+        location: form.location.trim(),
+        details: form.details.trim(),
+        status: "requested",
+        requestStatus: "pending",
+        paymentStatus: "not_started",
+        createdAt: serverTimestamp(),
+        source: "patient-web"
+      };
+      if (isAppointment) {
+        payload.doctorId = form.doctorId || null;
+        payload.doctorName = form.doctorName || null;
+        payload.requestedDate = form.date;
+        payload.requestedTime = form.time;
+        payload.consultationMode = form.service || "In-Person";
+      } else if (formType === "homecare") {
+        payload.serviceType = form.service;
+        payload.requestedDate = form.date;
+        payload.requestedTime = form.time;
+        payload.duration = form.duration;
+      }
+      await addDoc(collection(db, collectionName), payload);
+      setFormType("");
+      setNotice(isAppointment
+        ? "Your appointment request was sent to HealthReachCare for review. It is not confirmed until the provider accepts it."
+        : formType === "homecare"
+          ? "Your home-care request was sent to HealthReachCare for review. It is not confirmed until a provider accepts it and any required payment is completed."
+          : "Your prescription enquiry was sent to HealthReachCare for review.");
+    } catch (error) {
+      const message = error?.code === "permission-denied"
+        ? "HealthReachCare’s Firestore rules do not yet allow this request. No booking was created. The administrator must configure patient-owned request creation securely."
+        : "We couldn’t submit your request. Check your connection and try again. No confirmation or payment has been recorded.";
+      setNotice(message);
+    } finally {
+      setSubmittingRequest(false);
+    }
   };
 
   const useLocation = () => {
@@ -126,7 +190,7 @@ function App() {
     </div>
     {doctorState === "loading" && <div className="state-card"><RefreshCw className="spin" size={22}/><div><strong>Loading verified practitioners</strong><p>Please wait while the directory connects.</p></div></div>}
     {(doctorState === "error" || doctorState === "config") && <div className="state-card state-error"><AlertCircle size={23}/><div><strong>{doctorState === "config" ? "Directory setup needed" : "We couldn’t load the doctor directory"}</strong><p>{doctorError}</p><button className="text-button" onClick={()=>{setDoctorState("loading");setDoctorError("");if(!db){setDoctorState("config");setDoctorError("Doctor directory is not connected yet. Add the Firebase web configuration to enable live, verified practitioner records.");}}}><RefreshCw size={15}/> Try again</button></div></div>}
-    {doctorState === "ready" && (filteredDoctors.length ? <div className="doctor-grid">{filteredDoctors.map(d=><article className="doctor-card" key={d.id}><div className="doctor-avatar"><Stethoscope size={23}/></div><div className="verified"><ShieldCheck size={14}/> Verified practitioner</div><h3>{d.name || d.fullName || [d.firstName,d.lastName].filter(Boolean).join(" ") || "Healthcare professional"}</h3><p className="doctor-specialty">{d.specialty || d.specialisation || "Healthcare professional"}</p><p className="muted"><MapPin size={15}/> {d.location || d.city || d.practiceAddress || "Location not listed"}</p><button className="button button-primary full" onClick={()=>{setForm({name:user?.displayName || "",phone:"",details:"",location:""});setFormType("appointment");setNotice("Appointment requests are not submitted until the booking backend is connected.");}}>Request appointment <ArrowRight size={16}/></button></article>)}</div> : <div className="empty-state"><Users size={27}/><h3>No matching verified practitioners</h3><p>Try another specialty or location. Only verified records are shown.</p><button className="button button-outline" onClick={()=>{setDoctorSearch("");setSpecialty("All specialties");setMode("All modes");}}>Clear filters</button></div>)}
+    {doctorState === "ready" && (filteredDoctors.length ? <div className="doctor-grid">{filteredDoctors.map(d=><article className="doctor-card" key={d.id}><div className="doctor-avatar"><Stethoscope size={23}/></div><div className="verified"><ShieldCheck size={14}/> Verified practitioner</div><h3>{d.name || d.fullName || [d.firstName,d.lastName].filter(Boolean).join(" ") || "Healthcare professional"}</h3><p className="doctor-specialty">{d.specialty || d.specialisation || "Healthcare professional"}</p><p className="muted"><MapPin size={15}/> {d.location || d.city || d.practiceAddress || "Location not listed"}</p><button className="button button-primary full" onClick={()=>openForm("appointment",{doctorId:d.id,doctorName:d.name || d.fullName || [d.firstName,d.lastName].filter(Boolean).join(" ") || "Healthcare professional"})}>Request appointment <ArrowRight size={16}/></button></article>)}</div> : <div className="empty-state"><Users size={27}/><h3>No matching verified practitioners</h3><p>Try another specialty or location. Only verified records are shown.</p><button className="button button-outline" onClick={()=>{setDoctorSearch("");setSpecialty("All specialties");setMode("All modes");}}>Clear filters</button></div>)}
   </section>;
 
   const renderHome = () => <section className="page-content">
@@ -153,13 +217,13 @@ function App() {
   const renderAccount = () => <section className="page-content"><div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your personal HealthReachCare space.</p><div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign-in is not connected in this preview."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div><div className="panel"><h2>Need help?</h2><p className="muted">Contact your HealthReachCare support team for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured by the HealthReachCare team.")}><MessageCircle size={17}/> Contact support</button></div></section>;
 
   return <div className="app-shell">
-    <header className="topbar"><button className="mobile-menu" aria-label="Open home" onClick={()=>setPage("home")}><Menu/></button><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
+    <header className="topbar"><button className="mobile-menu" aria-label="Open home" onClick={()=>setPage("home")}><Menu/></button><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><button className="provider-entry" onClick={()=>setPage("provider")}>Provider workspace</button><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
     {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
     </header>
-    <main>{page === "home" ? renderHome() : page === "search" ? renderDoctorDirectory() : page === "activities" ? renderActivities() : page === "medicines" ? renderMedicines() : renderAccount()}</main>
+    <main>{page === "provider" ? <ProviderWorkspace user={user} onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "search" ? renderDoctorDirectory() : page === "activities" ? renderActivities() : page === "medicines" ? renderMedicines() : renderAccount()}</main>
     <footer className="site-footer"><Brand/><p>Better access. Healthier communities.</p><span>Healthcare information is not a substitute for professional medical advice.</span></footer>
     <nav className="bottom-nav" aria-label="Main navigation">{navItems.map(item=>{const Icon=item.icon;const active=(item.id==="search" && page==="search") || (item.id==="activities" && page==="activities") || (item.id==="account" && page==="account") || (item.id==="home" && ["home","medicines"].includes(page));return <button key={item.id} className={active?"nav-item active":"nav-item"} onClick={()=>setPage(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}</nav>
-    {formType && <div className="modal-backdrop" onClick={()=>setFormType("")}><section className="request-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">HEALTHREACHCARE REQUEST</div><h2>{formType==="appointment"?"Request an appointment":formType==="homecare"?"Request home care":"Prescription enquiry"}</h2></div><button className="icon-button" aria-label="Close" onClick={()=>setFormType("")}><X/></button></div><p className="muted">Enter your details to prepare your request. It will not be sent until the secure request service is connected.</p><form onSubmit={submitForm}><label>Full name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></label><label>Phone number<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="e.g. 082 123 4567"/></label><label>Town or suburb<input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Where do you need care?"/></label><label>{formType==="prescription"?"Prescription details (do not include sensitive information here)":"How can we help?"}<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})} placeholder="Briefly describe what you need" rows={3}/></label><div className="inline-message"><ShieldCheck size={17}/><span>Do not submit emergencies or sensitive medical records through this unconnected form.</span></div><button className="button button-primary full" type="submit">Review request <ArrowRight size={16}/></button></form></section></div>}
+    {formType && <div className="modal-backdrop" onClick={()=>setFormType("")}><section className="request-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">HEALTHREACHCARE REQUEST</div><h2>{formType==="appointment"?"Request an appointment":formType==="homecare"?"Request home care":"Prescription enquiry"}</h2></div><button className="icon-button" aria-label="Close" onClick={()=>setFormType("")}><X/></button></div>{notice && <div className="inline-message"><AlertCircle size={18}/><span>{notice}</span></div>}<p className="muted">{formType==="appointment" ? "Request a time with a verified practitioner. Your request remains pending until the provider confirms availability." : formType==="homecare" ? "Tell us what care you need and when. A provider must review and accept your request before it is confirmed." : "Send a prescription enquiry for the HealthReachCare team to review."}</p><form onSubmit={submitForm}><label>Full name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></label><label>Phone number<input required type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="e.g. 082 123 4567"/></label><label>{formType==="homecare"?"Care address / town or suburb":"Town or suburb"}<input required value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Where do you need care?"/></label>{formType!=="prescription" && <><label>{formType==="appointment"?"Preferred consultation":"Home-care service"}<select required value={form.service} onChange={e=>setForm({...form,service:e.target.value})}><option value="">Choose an option</option>{(formType==="appointment"?["In-Person","Video","Phone"]:["Nursing care","Personal care","Post-operative care","Elder care","Wound care","Other"]).map(option=><option key={option} value={option}>{option}</option>)}</select></label><div className="filter-row"><label>Preferred date<input required type="date" min={new Date().toISOString().slice(0,10)} value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label>Preferred time<input required type="time" value={form.time} onChange={e=>setForm({...form,time:e.target.value})}/></label></div>{formType==="homecare" && <label>Requested duration<select value={form.duration} onChange={e=>setForm({...form,duration:e.target.value})}>{["1 hour","2 hours","4 hours","8 hours","Overnight","Ongoing / to be discussed"].map(option=><option key={option}>{option}</option>)}</select></label>}</>}{formType==="appointment" && form.doctorName && <div className="inline-message"><Stethoscope size={17}/><span>Practitioner selected: <strong>{form.doctorName}</strong></span></div>}<label>{formType==="prescription"?"Prescription enquiry (do not include sensitive medical information)":"Additional details"}<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})} placeholder="Briefly describe what you need" rows={3}/></label><div className="inline-message"><ShieldCheck size={17}/><span>Your request is sent only when Firebase accepts it. A request is not a confirmed appointment, provider acceptance, or payment receipt. Do not use this form for emergencies or upload sensitive medical records.</span></div><button className="button button-primary full" type="submit" disabled={submittingRequest}>{submittingRequest ? "Sending request…" : "Submit booking request"} <ArrowRight size={16}/></button></form></section></div>}
   </div>;
 }
 

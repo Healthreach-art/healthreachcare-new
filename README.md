@@ -25,7 +25,7 @@ Configure and test Firestore security rules before production. Never make patien
 
 ## Honest integration status
 
-The patient-facing UI includes home, doctor search/filtering, activity/notification states, medicine catalogue setup messaging, and request-form UI. The appointment, home-care and prescription forms currently **do not submit or save requests**. A secure backend workflow, authorization rules, pharmacy inventory connection, and end-to-end acceptance testing are still required before accepting real requests or payments. Medicine listings are not fabricated; the app shows setup messaging until the real catalogue is wired.
+The patient-facing UI includes home, doctor search/filtering, activity/notification states, medicine catalogue setup messaging, and Firestore-backed appointment, home-care, and prescription-enquiry request submission for signed-in users. A role-gated provider workspace is available for doctors and home-care providers to review assigned requests and accept or decline them, subject to the actual Firestore security rules and role/profile schema. Home-care requests must be assigned to a provider by a trusted dispatch/admin workflow before they appear in that provider's workspace. This repository does not yet include the trusted backend, tested Firestore rules, or Paystack checkout/webhook required for production provider workflows or payments. The UI does not mark requests paid. See [provider workflow and payments](docs/provider-workflow-and-payments.md). Medicine listings are not fabricated; the app shows setup messaging until the real catalogue is wired.
 
 ## Deployment
 
