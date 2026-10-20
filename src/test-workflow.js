@@ -30,7 +30,7 @@ export const TEST_PRODUCTS = [
   { id: "test-thermometer", name: "Digital thermometer", category: "Health equipment test item", description: "Illustrative catalogue item for interface testing only.", price: 89, stock: 10, prescriptionRequired: false, active: true }
 ];
 
-const freshState = () => ({ version: 2, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], reviews: [], updatedAt: new Date().toISOString() });
+const freshState = () => ({ version: 2, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], reviews: [], messages: [], updatedAt: new Date().toISOString() });
 
 export function readWorkflow() {
   if (typeof window === "undefined") return freshState();
@@ -55,7 +55,8 @@ export function readWorkflow() {
       payments: Array.isArray(parsed.payments) ? parsed.payments : [],
       bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
       prescriptions: Array.isArray(parsed.prescriptions) ? parsed.prescriptions : [],
-      reviews: Array.isArray(parsed.reviews) ? parsed.reviews : []
+      reviews: Array.isArray(parsed.reviews) ? parsed.reviews : [],
+      messages: Array.isArray(parsed.messages) ? parsed.messages : []
     };
   } catch { return freshState(); }
 }
@@ -79,7 +80,8 @@ export function updateWorkflow(mutator) {
     payments: current.payments.map(item => ({ ...item })),
     bookings: current.bookings.map(item => ({ ...item })),
     prescriptions: (current.prescriptions || []).map(item => ({ ...item })),
-    reviews: (current.reviews || []).map(item => ({ ...item }))
+    reviews: (current.reviews || []).map(item => ({ ...item })),
+    messages: (current.messages || []).map(item => ({ ...item }))
   };
   const result = mutator(draft);
   if (result?.error) return result;
@@ -374,6 +376,32 @@ export function useTestWorkflow() {
     };
   }, [refresh]);
   return { ...state, refresh };
+}
+
+export function sendTestMessage({ requestId, requestType = "booking", senderRole, senderName, body }) {
+  const text = String(body || "").trim();
+  const allowedRoles = ["patient", "doctor", "homecare", "pharmacy", "driver", "admin"];
+  if (!String(requestId || "").trim()) return { error: "Choose a request before sending a message." };
+  if (!allowedRoles.includes(senderRole)) return { error: "This sender role is not supported." };
+  if (text.length < 1 || text.length > 2000) return { error: "Messages must contain 1–2,000 characters." };
+  return updateWorkflow(draft => {
+    const target = requestType === "order"
+      ? draft.orders.find(item => item.id === requestId && item.testOnly === true)
+      : draft.bookings.find(item => item.id === requestId && item.testOnly === true);
+    if (!target) return { error: "This test request was not found. Refresh and try again." };
+    if (["cancelled", "declined", "rejected"].includes(target.status)) return { error: "Messaging is closed for this cancelled or declined request." };
+    const now = new Date().toISOString();
+    const message = {
+      id: "HRC-MSG-" + Date.now().toString(36).toUpperCase(),
+      requestId, requestType, senderRole,
+      senderName: String(senderName || senderRole).trim().slice(0,100),
+      body: text, createdAt: now, testOnly: true
+    };
+    draft.messages.push(message);
+    target.lastMessageAt = now;
+    target.updatedAt = now;
+    return { value: message };
+  });
 }
 
 export function submitTestReview({ bookingId, rating, comment = "" }) {
