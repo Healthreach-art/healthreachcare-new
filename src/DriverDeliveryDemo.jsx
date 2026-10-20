@@ -9,7 +9,8 @@ const stamp=value=>value?new Date(value).toLocaleString("en-ZA",{dateStyle:"medi
 const itemText=order=>(order.items||[]).map(i=>i.name+" × "+(i.quantity||1)).join(", ")||"Synthetic medicine order";
 
 export default function DriverDeliveryDemo({orders,refresh}) {
-  const [tab,setTab]=useState("home"),[online,setOnline]=useState(false);\n  const [profile,setProfile]=useState(()=>{try{return JSON.parse(window.localStorage.getItem("healthreachcare-driver-demo-account-v1")||"{}")}catch{return {}}});
+  const [tab,setTab]=useState("home"),[online,setOnline]=useState(false);
+  const [profile,setProfile]=useState(()=>{try{return JSON.parse(window.localStorage.getItem("healthreachcare-driver-demo-account-v1")||"{}")}catch{return {}}});
   const [driverId,setDriverId]=useState(()=>{try{return window.localStorage.getItem("healthreachcare-driver-demo-active-v1")||DRIVERS[0].id}catch{return DRIVERS[0].id}});
   const [notice,setNotice]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(""),[loading,setLoading]=useState(true);
   const [available,setAvailable]=useState([]),[history,setHistory]=useState([]),[earnings,setEarnings]=useState({total:0,count:0,items:[]});
