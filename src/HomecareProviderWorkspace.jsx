@@ -86,7 +86,8 @@ export default function HomecareProviderWorkspace() {
     const current = readJson(REQUESTS_KEY, []);
     const index = current.findIndex(row => row.id === item.id && row.kind === "homecare");
     if (index < 0) { setError("This booking could not be found. Refresh and try again."); return; }
-    if (["pending", "requested", "awaiting_provider_review"].includes(status) === false && ["pending", "requested", "awaiting_provider_review"].includes(String(current[index].status || current[index].requestStatus || "").toLowerCase()) && status === "accepted") {
+    const currentStatus = String(current[index].status || current[index].requestStatus || "").toLowerCase();
+    if (status === "accepted" && !["pending", "requested", "awaiting_provider_review"].includes(currentStatus)) {
       setError("This request has already been actioned."); return;
     }
     if (status === "accepted" && !["test_paid", "paid", "test_authorized"].includes(String(current[index].paymentStatus || "").toLowerCase())) {
