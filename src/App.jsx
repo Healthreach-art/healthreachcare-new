@@ -61,9 +61,9 @@ const activityStages = item => {
     current: !closed && Boolean(currentCondition)
   }));
   if (medication) {
-    const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
-    const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
-    const ready = ["ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "picked_up", "out_for_delivery", "delivered"].includes(status);
+    const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "picked_up", "out_for_delivery", "delivered"].includes(status);
+    const ready = ["ready_for_delivery", "ready_for_pickup", "picked_up", "out_for_delivery", "delivered"].includes(status);
     const out = ["out_for_delivery", "delivered"].includes(status);
     return makeStages([
       ["Order submitted", true, status === "awaiting_payment" || status === "awaiting_pharmacy" || status === "pending"],
@@ -71,6 +71,7 @@ const activityStages = item => {
       ["Payment verified", paymentVerified, ["awaiting_payment", "payment_pending", "pending_gateway"].includes(status)],
       ["Preparing order", preparing, status === "preparing"],
       ["Ready / driver assigned", ready, ["ready_for_delivery", "ready_for_pickup"].includes(status)],
+      ["Driver pickup", ["picked_up", "out_for_delivery", "delivered"].includes(status), status === "picked_up"],
       ["Out for delivery", out, status === "out_for_delivery"],
       ["Delivered", status === "delivered", false]
     ]);

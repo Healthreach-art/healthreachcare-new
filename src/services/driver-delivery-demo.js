@@ -75,7 +75,7 @@ export async function confirmPickup(orderId,driverId,checklist={}) {
     if(!o) return {error:"Demo delivery not found."};
     if(o.driverId!==driverId) return {error:"This delivery belongs to another demo driver."};
     if(o.status!=="ready_for_delivery"||o.deliveryStage!=="accepted") return {error:"Pickup requires an accepted delivery and can happen only once."};
-    o.deliveryStage="picked_up";o.pickupConfirmedAt=history(o,o.status,driverId,"pickup_confirmed");
+    o.status="picked_up";o.deliveryStage="picked_up";o.pickupConfirmedAt=history(o,"picked_up",driverId,"pickup_confirmed");
     return {value:o};
   });
   return r?.error?result(null,r.error):result(clone(r.value));
@@ -86,7 +86,7 @@ export async function updateDeliveryStatus(orderId,nextStatus,driverId) {
     const o=d.orders.find(x=>isDemo(x)&&x.id===orderId);
     if(!o) return {error:"Demo delivery not found."};
     if(o.driverId!==driverId) return {error:"This delivery belongs to another demo driver."};
-    if(o.status!=="ready_for_delivery"||o.deliveryStage!=="picked_up"||!o.pickupConfirmedAt) return {error:"Complete the pickup checklist before starting delivery."};
+    if(o.status!=="picked_up"||o.deliveryStage!=="picked_up"||!o.pickupConfirmedAt) return {error:"Complete the pickup checklist before starting delivery."};
     o.status="out_for_delivery";o.deliveryStage="out_for_delivery";history(o,nextStatus,driverId,"delivery_started");
     return {value:o};
   });
