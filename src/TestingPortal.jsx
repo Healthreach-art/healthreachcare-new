@@ -3,7 +3,7 @@ import {
   Activity, ArrowLeft, ArrowRight, CheckCircle2, ClipboardList, CreditCard,
   HeartPulse, House, Package, Pill, ShieldCheck, ShoppingBag, Stethoscope,
   Truck, UserRound, Users, Wallet, RefreshCw, AlertCircle, Clock3, MapPin, MessageCircle, Send,
-  Search, ShoppingCart, X, Banknote, CalendarDays, CircleUserRound, FileText, Save
+  Search, ShoppingCart, X, Banknote, CalendarDays, CircleUserRound, FileText, Save, Mail
 } from "lucide-react";
 import {
   createTestOrder, readWorkflow, recordTestPayment, sendTestMessage, transitionTestBooking, transitionTestOrder, transitionTestPrescription,
