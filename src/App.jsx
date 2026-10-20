@@ -110,7 +110,7 @@ function Brand() {
 
 function App() {
   const [page, setPage] = useState("landing");
-  const [user] = useState(null);
+  const [user, setUser] = useState(() => { try { const saved = JSON.parse(localStorage.getItem("healthreachcare-preview-session") || "null"); return saved?.testOnly === true && saved?.role === "patient" ? saved : null; } catch { return null; } });
   const [accountDetails, setAccountDetails] = useState(() => {
     const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true,signInAlerts:true,privacyMode:true,deviceLockReminder:false};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
@@ -443,12 +443,12 @@ function App() {
     </div>
     <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Privacy and consent</h2><p>Manage your choices and understand how this preview handles information.</p></div></div><div className="account-setting-row"><div><strong>Profile and preference storage</strong><p className="muted">Changes are stored in this browser on this device only. They are not uploaded or linked to a verified patient account.</p></div><span className="account-status">Local preview</span></div><div className="account-setting-row"><div><strong>How information is used</strong><p className="muted">Information entered here supports the interface preview. It does not create a live medical record, send notifications or confirm care services.</p></div></div><div className="account-setting-row"><div><strong>Consent and your choices</strong><p className="muted">Secure account access, data-rights requests and a published privacy notice must be connected before production use. A formal privacy notice will be linked here once approved and published.</p></div></div></div>
     <div className="panel"><div className="panel-heading"><div className="panel-icon"><MessageCircle/></div><div><h2>Help and support</h2><p>FAQs and support for appointments, medicine orders and homecare.</p></div></div><p className="muted">Email support@healthreachcare.co.za or open the support centre.</p><button type="button" className="button button-outline" onClick={()=>setPage("support")}><MessageCircle size={17}/> Open help and support</button></div>
-    <div className="panel account-logout-panel"><div><h2>Sign out</h2><p className="muted">The current preview does not have a signed-in account session.</p></div><button className="button button-outline" onClick={()=>{setPage("landing");setNotice("");}}><LogOut size={16}/> Return to welcome screen</button></div>
+    <div className="panel account-logout-panel"><div><h2>Sign out</h2><p className="muted">{user?.displayName ? "Preview session: "+user.displayName : "No preview patient session is active."} This is not a secure production account.</p></div><button className="button button-outline" onClick={()=>{setUser(null);try{localStorage.removeItem("healthreachcare-preview-session");}catch{}setPage("landing");setNotice("");}}><LogOut size={16}/> Sign out of preview</button></div>
     {notice && <div className="inline-message"><AlertCircle size={18}/><span>{notice}</span></div>}
   </section>;
 
   if (page === "landing") return <TestingLanding onOpenAuth={() => setPage("auth")} />;
-  if (page === "auth") return <TestingAuth onBack={() => setPage("landing")} onOpenRole={role => setPage(role === "patient" ? "home" : role === "doctor" ? "doctor-provider" : role === "homecare" ? "homecare-provider" : "test-" + role)} />;
+  if (page === "auth") return <TestingAuth onBack={() => setPage("landing")} onPreviewSignIn={details => { const session = { ...details, role: "patient", testOnly: true }; setUser(session); try { localStorage.setItem("healthreachcare-preview-session", JSON.stringify(session)); } catch {} setPage("home"); }} onOpenRole={role => setPage(role === "patient" ? "home" : role === "doctor" ? "doctor-provider" : role === "homecare" ? "homecare-provider" : "test-" + role)} />
   if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("auth")} />;
 
   return <div className={darkBackground ? "app-shell dark-background" : "app-shell"}>
