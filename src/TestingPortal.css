@@ -132,3 +132,40 @@
 .provider-home-grid p{font-size:12px;line-height:1.7;color:var(--muted,#687e73)}
 .provider-home-grid .button{margin-top:8px}
 @media(max-width:680px){.provider-home-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* Dedicated courier-app treatment for the driver workspace */
+.courier-app-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:6px 0 18px;padding:25px 26px;border-radius:20px;background:#14241e;color:#fff;box-shadow:0 12px 30px rgba(19,49,37,.12)}
+.courier-heading-copy{min-width:0}
+.courier-kicker{display:block;font-size:10px;font-weight:850;letter-spacing:.15em;color:#a7d9bd}
+.courier-app-heading h1{margin:8px 0 5px;font-size:clamp(26px,4vw,36px);line-height:1.1;letter-spacing:-.04em;color:#fff}
+.courier-app-heading p{margin:0;max-width:560px;font-size:12px;line-height:1.65;color:#c4d2cb}
+.courier-open-chip{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border:1px solid #456456;background:#20382d;border-radius:999px;padding:9px 12px;color:#d8e9df;font-size:9px;font-weight:800;letter-spacing:.04em}
+.courier-open-chip>span,.courier-map-status>span{width:7px;height:7px;display:inline-block;border-radius:50%;background:#e7b45b}
+.courier-security-note{border-radius:12px;font-size:10px}
+.courier-map-card{overflow:hidden;margin:16px 0 20px;border:1px solid #e1eae4;border-radius:18px;background:#fff;box-shadow:0 6px 22px rgba(24,55,42,.045)}
+.courier-map-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:19px 20px 15px}
+.courier-map-top h2{margin:5px 0;font-size:18px;color:#193d2e;letter-spacing:-.025em}
+.courier-map-top p{margin:0;max-width:440px;color:#718278;font-size:11px;line-height:1.6}
+.courier-map-status{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:#f1f5f2;color:#587065;font-size:9px;font-weight:750;white-space:nowrap}
+.courier-map-status>span{background:#9aaba1}
+.courier-map-art{height:205px;position:relative;overflow:hidden;background-color:#eaf0e9;background-image:linear-gradient(28deg,transparent 47%,rgba(255,255,255,.8) 48%,rgba(255,255,255,.8) 51%,transparent 52%),linear-gradient(112deg,transparent 46%,rgba(255,255,255,.9) 47%,rgba(255,255,255,.9) 50%,transparent 51%),linear-gradient(0deg,rgba(197,215,201,.24) 1px,transparent 1px),linear-gradient(90deg,rgba(197,215,201,.24) 1px,transparent 1px);background-size:100% 100%,100% 100%,34px 34px,34px 34px}
+.courier-map-road{position:absolute;background:#fff;border:1px solid #dce5dd;border-radius:999px;opacity:.95}
+.courier-map-road.road-one{height:17px;width:120%;left:-10%;top:42%;transform:rotate(-12deg)}
+.courier-map-road.road-two{height:14px;width:115%;left:-8%;top:67%;transform:rotate(17deg)}
+.courier-map-road.road-three{height:120%;width:15px;left:63%;top:-10%;transform:rotate(22deg)}
+.courier-map-block{position:absolute;background:#d7e6d7;border:1px solid #c6d9c8;border-radius:8px}
+.courier-map-block.block-one{left:9%;top:12%;width:19%;height:19%}
+.courier-map-block.block-two{right:11%;top:12%;width:17%;height:21%}
+.courier-map-block.block-three{left:17%;bottom:9%;width:21%;height:17%}
+.courier-map-block.block-four{right:12%;bottom:9%;width:19%;height:17%}
+.courier-map-route{position:absolute;left:31%;top:27%;width:39%;height:42%;display:flex;align-items:center;justify-content:space-between}
+.courier-map-line{height:4px;flex:1;background:#15956c;box-shadow:0 0 0 4px rgba(21,149,108,.1);border-radius:99px;transform:rotate(-8deg)}
+.courier-map-pickup,.courier-map-driver{z-index:1;width:35px;height:35px;display:grid;place-items:center;border:3px solid #fff;border-radius:50%;box-shadow:0 4px 12px rgba(28,64,48,.2)}
+.courier-map-pickup{background:#183c2d;color:#fff}
+.courier-map-driver{background:#15956c;color:#fff}
+.courier-map-label{position:absolute;font-size:8px;font-weight:850;letter-spacing:.09em;color:#4c6658}
+.courier-map-label.label-pickup{left:25%;top:21%}
+.courier-map-label.label-driver{right:22%;top:60%}
+.courier-map-footer{display:flex;justify-content:space-between;gap:12px;padding:12px 20px;color:#6e8176;font-size:10px;font-weight:650}
+.courier-map-footer span{display:inline-flex;align-items:center;gap:6px}
+@media(max-width:600px){.courier-app-heading{align-items:flex-start;flex-direction:column;padding:20px;border-radius:15px}.courier-open-chip{align-self:flex-start}.courier-map-top{flex-direction:column;padding:16px}.courier-map-status{white-space:normal}.courier-map-art{height:175px}.courier-map-footer{padding:11px 14px;flex-wrap:wrap}}
