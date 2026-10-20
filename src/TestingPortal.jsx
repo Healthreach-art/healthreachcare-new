@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import {
   Activity, ArrowLeft, ArrowRight, CheckCircle2, ClipboardList, CreditCard,
   HeartPulse, House, Package, Pill, ShieldCheck, ShoppingBag, Stethoscope,
-  Truck, UserRound, Users, Wallet, RefreshCw, AlertCircle, Clock3, MapPin,
+  Truck, UserRound, Users, Wallet, RefreshCw, AlertCircle, Clock3, MapPin, MessageCircle, Send,
   Search, ShoppingCart, X, Banknote, CalendarDays, CircleUserRound, FileText
 } from "lucide-react";
 import {
-  createTestOrder, readWorkflow, recordTestPayment, transitionTestBooking, transitionTestOrder, transitionTestPrescription,
+  createTestOrder, readWorkflow, recordTestPayment, sendTestMessage, transitionTestBooking, transitionTestOrder, transitionTestPrescription,
   updateWorkflow, useTestWorkflow
 } from "./test-workflow.js";
 import "./TestingPortal.css";
