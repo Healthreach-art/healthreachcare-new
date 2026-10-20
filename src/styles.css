@@ -292,3 +292,5 @@ main{flex:1}.page-content{max-width:1180px;width:calc(100% - 56px);margin:0 auto
 .favourite-provider-row small{font-size:12px;color:var(--muted)}
 .favourite-provider-row .button{flex-shrink:0}
 @media(max-width:600px){.favourite-provider-row{align-items:flex-start;flex-direction:column}.favourite-provider-row .button{width:100%}.activity-interaction-panel{padding:16px}}
+
+.notification-count{position:absolute;right:-5px;top:-5px;min-width:18px;height:18px;padding:0 4px;border:2px solid #fff;border-radius:999px;background:#c84e3d;color:#fff;font-size:10px;font-weight:700;line-height:14px;text-align:center}
