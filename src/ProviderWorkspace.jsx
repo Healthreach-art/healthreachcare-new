@@ -67,10 +67,11 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
       return <article className="provider-request-card" key={item.id}>
         <div className="provider-request-head"><div><span className="provider-request-type">{role === "doctor" ? "DOCTOR APPOINTMENT" : "HOMECARE REQUEST"}</span><h3>{item.patientName || "Test patient"}</h3><p>{item.patientPhone || "No phone supplied"} · {item.location || "Location not supplied"}</p></div><span className={"request-status status-" + status}>{readable(status)}</span></div>
         <div className="provider-request-details">
-          {role === "doctor" ? <p><strong>Consultation:</strong> {item.consultationMode || "Not specified"}</p> : <p><strong>Service:</strong> {item.serviceType || "Not specified"} · {item.duration || "Duration to discuss"}</p>}
+          {role === "doctor" ? <p><strong>Consultation:</strong> {item.consultationMode || "Not specified"}</p> : <p><strong>Service:</strong> {item.serviceType || "Not specified"} · {item.duration || "Not specified"}</p>}
           <p><strong>Requested:</strong> {item.requestedDate || "Date not specified"} {item.requestedTime || ""}</p>
           <p><strong>Submitted:</strong> {formatDate(item.createdAt)}</p>
           <p><strong>Details:</strong> {item.details || "No additional details"}</p>
+          <p><strong>Fixed service price:</strong> {role === "homecare" ? (typeof item.servicePrice === "number" ? "R" + item.servicePrice.toFixed(2) : "Not configured in preview") : (typeof item.consultationFee === "number" ? "Illustrative R" + item.consultationFee.toFixed(2) : "Not configured in preview")}</p>
           <p><strong>Payment:</strong> Not connected — this test portal never collects payment.</p>
         </div>
         {pending && <div className="provider-request-actions"><button className="button button-primary" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "accepted")}>{busyId === item.id ? "Saving…" : <><CheckCircle2 size={16}/> Accept test request</>}</button><button className="button button-outline" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "declined")}><XCircle size={16}/> Decline</button></div>}

@@ -25,6 +25,6 @@ No `.env.local` or Firebase web configuration is required for this UI test.
 
 ## Before production
 
-Firebase/Auth/Firestore integration, secure request ownership rules, provider assignment and review, live availability/booking locks, medicine catalogue/inventory, and secure payment checkout/webhook must be deliberately reconnected and end-to-end tested before any real patient requests or payments are enabled. Do not represent local test requests or sample prices as real bookings or quotes.
+Firebase/Auth/Firestore integration, secure request ownership rules, provider assignment and review, live availability/booking locks, medicine catalogue/inventory, and secure payment checkout/webhook must be deliberately reconnected and end-to-end tested before any real patient requests or payments are enabled. Do not represent local test requests or sample prices as real bookings or live prices. Homecare must use configured fixed service prices; if no price is configured, disable checkout and show that booking is unavailable.
 
 The app builds to `dist/` and can be deployed to a static host that supports Vite assets.
