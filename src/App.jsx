@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
+import { TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
 
 const specialties = ["All specialties","GP","Paediatrician","Cardiologist","Dermatologist","Gynaecologist","Psychiatrist","Psychologist","ENT","Ophthalmologist","Orthopaedic Surgeon","Neurologist","Endocrinologist","Urologist","Dentist","Physiotherapist"];
 const navItems = [
@@ -21,7 +22,7 @@ function Brand() {
 }
 
 function App() {
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState("landing");
   const [user] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationError] = useState("Testing mode: notifications are not connected.");
@@ -200,6 +201,10 @@ function App() {
     <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Ready for a future backend</h2><p>The UI is kept separate from the authentication and data-service layer so a backend can be added later without rebuilding the screens.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>No account is created, no personal information is stored, and no request or payment can be submitted from this preview.</span></div></div>
     <div className="panel"><h2>Need help?</h2><p className="muted">Contact HealthReachCare support for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured.")}><MessageCircle size={17}/> Contact support</button></div>
   </section>;
+
+  if (page === "landing") return <TestingLanding onOpenAuth={() => setPage("auth")} />;
+  if (page === "auth") return <TestingAuth onBack={() => setPage("landing")} onOpenRole={role => setPage(role === "patient" ? "home" : "test-" + role)} />;
+  if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("auth")} />;
 
   return <div className="app-shell">
     <header className="topbar"><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="button button-outline" onClick={()=>setPage("doctor-provider")}>Doctor test portal</button><button className="button button-outline" onClick={()=>setPage("homecare-provider")}>Homecare test portal</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
