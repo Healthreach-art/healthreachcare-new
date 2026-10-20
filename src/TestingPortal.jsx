@@ -130,6 +130,7 @@ export function PatientMedicineShop({ onBack, onOpenActivities }) {
     } catch (e) { setError(e.message || "Test payment could not be recorded."); }
   };
   const cancelOrder = order => {
+    if (!window.confirm("Cancel this sandbox order? If it has a simulated payment, a refund record will be created. No real money moves.")) return;
     setError(""); setNotice("");
     const result = transitionTestOrder(order.id, "cancelled");
     if (result?.error) setError(result.error);
