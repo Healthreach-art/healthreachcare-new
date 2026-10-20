@@ -209,7 +209,48 @@ export function TestRoleWorkspace({ role, onBack }) {
 }
 
 function OrderList({ title, orders, actionFor }) {
-  return <div className="test-surface"><div className="test-section-head"><div><h2>{title}</h2><p>Patient orders are shared locally across open test workspaces on this browser origin.</p></div></div>{orders.length ? <div className="test-workspace-order-list">{orders.map(order => <article className="test-order-card" key={order.id}><div className="test-order-card-head"><div><span className="test-product-tag">{order.id}</span><h3>{order.patientName}</h3><p><MapPin size={13}/> {order.fulfilment === "pickup" ? "Pharmacy pickup" : order.address || "No address supplied"} · {dateTime(order.createdAt)}</p></div><span className={"test-status status-" + order.status}>{statusLabel(order.status)}</span></div><div className="test-order-items">{order.items.map((item, index) => <span key={item.productId || index}>{item.quantity} × {item.name}</span>)}</div><div className="test-order-card-foot"><span>Payment: <strong>{statusLabel(order.paymentStatus)}</strong></span><strong>{money(order.total)}</strong></div><div className="test-order-actions">{actionFor(order)}</div></article>) : <Empty title="No matching test orders" description="Place an order from the patient workspace to see it arrive here."/>}</div>}</div>;
+  return (
+    <div className="test-surface">
+      <div className="test-section-head">
+        <div>
+          <h2>{title}</h2>
+          <p>Patient orders are shared locally across open test workspaces on this browser origin.</p>
+        </div>
+      </div>
+      {orders.length ? (
+        <div className="test-workspace-order-list">
+          {orders.map(order => (
+            <article className="test-order-card" key={order.id}>
+              <div className="test-order-card-head">
+                <div>
+                  <span className="test-product-tag">{order.id}</span>
+                  <h3>{order.patientName}</h3>
+                  <p>
+                    <MapPin size={13} />{" "}
+                    {order.fulfilment === "pickup" ? "Pharmacy pickup" : order.address || "No address supplied"}
+                    {" · "}{dateTime(order.createdAt)}
+                  </p>
+                </div>
+                <span className={"test-status status-" + order.status}>{statusLabel(order.status)}</span>
+              </div>
+              <div className="test-order-items">
+                {order.items.map((item, index) => (
+                  <span key={item.productId || index}>{item.quantity} × {item.name}</span>
+                ))}
+              </div>
+              <div className="test-order-card-foot">
+                <span>Payment: <strong>{statusLabel(order.paymentStatus)}</strong></span>
+                <strong>{money(order.total)}</strong>
+              </div>
+              <div className="test-order-actions">{actionFor(order)}</div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty title="No matching test orders" description="Place an order from the patient workspace to see it arrive here." />
+      )}
+    </div>
+  );
 }
 
 function Metric({ icon, label, value }) {
