@@ -21,16 +21,44 @@ const roles = [
   { id: "admin", title: "Admin", description: "Monitor test orders, payment attempts, stock and requests.", icon: ShieldCheck }
 ];
 
-export function TestingLanding({ onOpenRole }) {
+export function TestingLanding({ onOpenAuth }) {
   return <main className="test-landing">
-    <header className="test-landing-header"><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong><small>Better access. Healthier communities.</small></div></div><span className="test-open-chip"><span/> TEST ENVIRONMENT</span></header>
+    <header className="test-landing-header"><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong><small>Better access. Healthier communities.</small></div></div><span className="test-open-chip"><span/> HEALTHCARE PLATFORM</span></header>
     <section className="test-hero">
-      <div className="test-hero-copy"><div className="eyebrow">ONE CONNECTED CARE JOURNEY</div><h1>Health care, connected from patient to provider.</h1><p>Explore the patient experience and the doctor, pharmacy, driver and admin workspaces from one testing landing page.</p><button className="button button-primary" onClick={() => onOpenRole("patient")}>Open patient experience <ArrowRight size={17}/></button></div>
+      <div className="test-hero-copy"><div className="eyebrow">ONE CONNECTED CARE JOURNEY</div><h1>Better access. Healthier communities.</h1><p>Find care, order medication and connect with the teams that support your health — in one connected platform.</p><div className="test-hero-actions"><button className="button button-primary" onClick={onOpenAuth}>Sign in or create an account <ArrowRight size={17}/></button><button className="test-secondary-cta" onClick={onOpenAuth}>Explore demo access</button></div><div className="test-trust-line"><ShieldCheck size={16}/> Secure access is planned for patient and provider accounts.</div></div>
       <div className="test-hero-art"><div className="test-art-ring"><HeartPulse size={74}/></div><span className="test-art-badge badge-one"><Pill size={17}/> Pharmacy</span><span className="test-art-badge badge-two"><Truck size={17}/> Delivery</span></div>
     </section>
-    <div className="test-warning"><AlertCircle size={19}/><div><strong>Testing only — no login required</strong><p>These are open test workspaces using local browser storage and sample inventory. Do not enter real patient information. Nothing here is a real prescription, provider acceptance, delivery, or payment.</p></div></div>
-    <section className="test-role-section"><div className="eyebrow">CHOOSE A WORKSPACE</div><h2>Explore HealthReachCare</h2><p>Open any role directly while testing. Access is intentionally open here and is not secure enough for production.</p><div className="test-role-grid">{roles.map(role => { const Icon = role.icon; return <button className="test-role-card" key={role.id} onClick={() => onOpenRole(role.id)}><span className={"test-role-icon role-" + role.id}><Icon size={23}/></span><strong>{role.title}</strong><span>{role.description}</span><span className="test-role-link">Open workspace <ArrowRight size={15}/></span></button>; })}</div></section>
-    <footer className="test-landing-footer"><ShieldCheck size={16}/> Test data is stored in this browser only. Firebase authentication and live payment processing are not enabled in this test workflow.</footer>
+    <section className="test-landing-services"><div className="eyebrow">CARE IN ONE PLACE</div><h2>From finding care to following up</h2><div className="test-service-strip"><span><Stethoscope size={18}/> Doctor appointments</span><span><Pill size={18}/> Medication orders</span><span><House size={18}/> Homecare services</span><span><Truck size={18}/> Delivery updates</span></div></section>
+    <div className="test-warning"><AlertCircle size={19}/><div><strong>Testing environment</strong><p>Demo workspaces use sample data stored in this browser. Real sign-in, shared provider data and live payments are not connected yet. Do not enter real patient information.</p></div></div>
+    <footer className="test-landing-footer"><ShieldCheck size={16}/> Production access must be authenticated and authorised by role. Demo access is kept separate from normal patient navigation.</footer>
+  </main>;
+}
+
+const DEMO_ACCESS_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_ACCESS === "true";
+
+export function TestingAuth({ onOpenRole, onBack }) {
+  const [showDemoNotice, setShowDemoNotice] = useState(false);
+  return <main className="test-landing test-auth-page">
+    <header className="test-landing-header"><button className="test-auth-brand-button" onClick={onBack}><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong><small>Better access. Healthier communities.</small></div></div></button><span className="test-open-chip"><span/> ACCOUNT ACCESS</span></header>
+    <button className="test-back-link" onClick={onBack}><ArrowLeft size={16}/> Back to landing page</button>
+    <section className="test-auth-layout">
+      <div className="test-auth-intro"><div className="eyebrow">WELCOME BACK</div><h1>Sign in to HealthReachCare</h1><p>Access your healthcare workspace securely. Patient, doctor, pharmacy, driver and admin access will use verified accounts and role permissions in production.</p><div className="test-auth-security"><ShieldCheck size={20}/><div><strong>Account security is not switched on yet</strong><span>This build is still in testing. Real sign-in and account creation are not connected; no credentials are accepted or saved.</span></div></div></div>
+      <section className="test-auth-card">
+        <span className="test-auth-lock"><ShieldCheck size={24}/></span><h2>Sign in or create an account</h2><p>The authentication service must be configured before these actions can be enabled.</p>
+        <label>Email address<input type="email" placeholder="you@example.com" disabled autoComplete="email"/></label>
+        <label>Password<input type="password" placeholder="Enter your password" disabled autoComplete="current-password"/></label>
+        <button className="button button-primary full" disabled>Sign in — not configured</button>
+        <button className="test-create-account" disabled>Create an account · coming after authentication setup</button>
+        <p className="test-auth-form-note">Do not enter a real password here. These fields are intentionally disabled.</p>
+      </section>
+    </section>
+    <section className="test-auth-demo-section">
+      <div className="test-auth-demo-heading"><div><div className="eyebrow">TESTING ONLY</div><h2>Demo workspace access</h2><p>Choose a role to test the current workflows. These demo links are separate from normal patient navigation.</p></div><span className="test-open-chip"><span/> DEMO MODE</span></div>
+      {DEMO_ACCESS_ENABLED ? <div className="test-role-grid">{roles.map(role => { const Icon = role.icon; return <button className="test-role-card" key={role.id} onClick={() => onOpenRole(role.id)}><span className={"test-role-icon role-" + role.id}><Icon size={23}/></span><strong>{role.title}</strong><span>{role.description}</span><span className="test-role-link">Open demo workspace <ArrowRight size={15}/></span></button>; })}</div> : <div className="test-warning"><ShieldCheck size={19}/><div><strong>Demo access is disabled in this build</strong><p>For an approved test deployment, set VITE_ENABLE_DEMO_ACCESS=true. Keep it disabled for production and connect real authentication before launch.</p></div></div>}
+      {showDemoNotice && <div className="inline-message"><AlertCircle size={18}/><span>Demo workspaces use browser-local test data only. They are not secure for real patient information.</span></div>}
+      <button className="test-demo-disclaimer" onClick={() => setShowDemoNotice(value => !value)}><AlertCircle size={15}/> {showDemoNotice ? "Hide demo limitations" : "Read demo limitations"}</button>
+    </section>
+    <footer className="test-landing-footer"><ShieldCheck size={16}/> No real authentication, authorisation, patient records or payment processing is active in this test build.</footer>
   </main>;
 }
 
