@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Heart, House, ShieldCheck, Stethoscope, AlertCircle, Accessibility, HandHeart, Pill, Sparkles } from "lucide-react";
 import "./BookingFlow.css";
-import { configuredHomecarePrice, formatZar } from "./care-journey.js";
+import { configuredHomecarePrice, formatZar, recordCareEvent } from "./care-journey.js";
 const services = [
   { id: "personal_care", title: "Personal care", description: "Daily living and personal support" },
   { id: "elderly_care", title: "Elderly care", description: "Companionship and everyday support" },
@@ -71,10 +71,12 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
         status: "pending",
         requestStatus: "pending",
         paymentStatus: "not_connected",
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        statusHistory: [{ status: "pending", at: new Date().toISOString(), testOnly: true }]
       };
       localStorage.setItem(key, JSON.stringify([item, ...existing]));
       window.dispatchEvent(new CustomEvent("healthreachcare-test-bookings-updated"));
+      try { recordCareEvent({ type: "test_booking_created", title: "Test appointment request created", message: "Saved in this browser only. No real clinician was contacted.", bookingId: item.id }); } catch { /* A preview notification must not block saving the local test request. */ }
       setSubmittedRequest(item);
       setMessage("");
       setStep(3);
