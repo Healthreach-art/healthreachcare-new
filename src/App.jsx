@@ -24,9 +24,6 @@ function App() {
   const [user] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationError] = useState("Testing mode: notifications are not connected.");
-  const [doctors] = useState([]);
-  const [doctorState, setDoctorState] = useState("config");
-  const [doctorError] = useState("The provider data adapter is not connected yet. The interface is prepared for a future backend; no sample doctors are shown.");
   const [showNotifications, setShowNotifications] = useState(false);
   const [notice, setNotice] = useState("");
   const [formType, setFormType] = useState("");
@@ -55,16 +52,6 @@ function App() {
     setNotice("This request form is a UI preview only. No account, booking, prescription, provider notification or payment service is connected, so nothing was submitted.");
     setFormType("");
     setSubmittingRequest(false);
-  };
-
-  const useLocation = () => {
-    if (!navigator.geolocation) { setLocationMessage("Location is not supported by this browser."); return; }
-    setLocationMessage("Requesting your permission…");
-    navigator.geolocation.getCurrentPosition(
-      position => setLocationMessage("Location permission granted. Nearby distance filtering needs to be enabled on verified practitioner records."),
-      () => setLocationMessage("Location access was not granted. You can still search by town or suburb."),
-      {timeout:8000}
-    );
   };
 
   const renderHome = () => <section className="page-content">
