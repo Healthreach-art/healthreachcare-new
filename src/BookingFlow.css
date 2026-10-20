@@ -16,3 +16,6 @@
 .booking-main-card>.button{margin-top:14px}
 .booking-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px}
 @media(max-width:650px){.booking-service-grid,.booking-form-grid{grid-template-columns:1fr}.booking-form-full{grid-column:auto}.booking-actions{align-items:flex-start;flex-direction:column}.booking-service-card{padding:12px}}
+
+.booking-card-back{display:inline-flex;align-items:center;gap:7px;margin:0 0 15px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--green);font-size:11px;font-weight:750;cursor:pointer}
+.booking-card-back:hover,.booking-card-back:focus-visible{background:#f2f8f4;outline-color:var(--green)}
