@@ -11,6 +11,7 @@ import ProviderWorkspace from "./ProviderWorkspace.jsx";
 import PrescriptionSandbox from "./PrescriptionSandbox.jsx";
 import { cancelTestBooking, readWorkflow, saveTestBooking, saveTestEnquiry, sendTestMessage, simulateTestBookingPayment, submitTestReview, useTestWorkflow, SIMULATION_CONFIG } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
+import PharmacyWorkspace from "./PharmacyWorkspace.jsx";
 
 
 const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
@@ -450,6 +451,7 @@ function App() {
 
   if (page === "landing") return <TestingLanding onOpenAuth={() => setPage("auth")} />;
   if (page === "auth") return <TestingAuth onBack={() => setPage("landing")} onOpenRole={role => setPage(role === "patient" ? "home" : role === "doctor" ? "doctor-provider" : role === "homecare" ? "homecare-provider" : "test-" + role)} />;
+  if (page === "test-pharmacy") return <PharmacyWorkspace onBack={() => setPage("auth")} />;
   if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("auth")} />;
 
   return <div className={darkBackground ? "app-shell dark-background" : "app-shell"}>
