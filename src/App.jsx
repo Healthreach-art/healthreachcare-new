@@ -25,11 +25,20 @@ const activityDate = value => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) || parsed.getFullYear() < 2000 || parsed.getFullYear() > 2100 ? "Date not set" : parsed.toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" });
 };
+const hasInvalidPreviewDate = item => {
+  const value = item.requestedDate || item.date;
+  if (!value) return false;
+  const year = Number(String(value).slice(0, 4));
+  return !Number.isFinite(year) || year < 2000 || year > 2100;
+};
 const getActivityRecords = workflow => {
   const legacy = readLegacyBookings().map(item => ({ ...item, source: "legacy-test" }));
   const orders = (workflow.orders || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "medication", source: "workflow-test" }));
   const bookings = (workflow.bookings || []).filter(item => item.testOnly).map(item => ({ ...item, kind: item.kind || (item.serviceType?.toLowerCase().includes("home") ? "homecare" : "appointment"), source: "workflow-test" }));
-  return [...legacy, ...bookings, ...orders].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+  // Hide obviously invalid legacy demo dates from the patient UI without deleting browser data.
+  return [...legacy, ...bookings, ...orders]
+    .filter(item => !hasInvalidPreviewDate(item))
+    .sort((a, b) => new Date(b.updatedAt || b.providerResponseAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.providerResponseAt || a.createdAt || 0).getTime());
 };
 const activityStages = item => {
   const status = activityStatus(item);
@@ -241,7 +250,7 @@ function App() {
       <div className="panel"><div className="panel-heading"><div className="panel-icon"><CalendarDays/></div><div><h2>Care history</h2><p>Tap any item to view its full details and progress.</p></div></div>
         {filtered.length ? <div className="activity-list">{filtered.map(item=><button type="button" className="activity-card" key={item.id} onClick={()=>setSelectedActivity(item)}>
           <span className="activity-card-icon">{item.items?<Pill/>:activityKind(item)==="Homecare request"?<House/>:activityKind(item)==="Medication order"?<Pill/>:<Stethoscope/>}</span>
-          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{item.providerName || item.doctorName || (item.items ? "Pharmacy assignment not connected" : "Provider not assigned")}</small></span>
+          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{item.providerName || item.doctorName || (item.items ? "Pharmacy assignment not connected" : "Provider not assigned")}</small>{["cancelled","canceled","declined","rejected"].includes(activityStatus(item)) && (item.cancellationReason || item.cancelReason) && <small className="activity-cancellation-reason">Reason: {item.cancellationReason || item.cancelReason}</small>}</span>
           <span className={"activity-status status-"+activityStatus(item)}>{String(activityStatus(item)).replace(/_/g," ")}</span><ChevronRight size={17}/>
         </button>)}</div> : <div className="empty-state"><CalendarDays size={27}/><h3>{activityFilter==="cancelled"?"No cancelled activities":activityFilter==="past"?"No completed activities":"No activities yet"}</h3><p>Test requests and orders appear here when created in this preview. No real provider is contacted.</p><button className="button button-outline" onClick={()=>setPage("home")}>Browse services</button></div>}
       </div>
