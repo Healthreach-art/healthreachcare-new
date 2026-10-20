@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2, Heart, House, ShieldCheck, Stethoscope, AlertCircle, Accessibility, HandHeart, Pill, Sparkles, Search, MapPin } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Heart, House, ShieldCheck, Stethoscope, AlertCircle, Accessibility, HandHeart, Pill, Sparkles, MapPin } from "lucide-react";
 import "./BookingFlow.css";
 const services = [
   { id: "personal_care", title: "Personal care", description: "Daily living and personal support" },
