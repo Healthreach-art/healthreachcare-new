@@ -26,8 +26,7 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
     };
   }, []);
 
-  const providerId = role === "doctor" ? "demo-doctor-provider" : "demo-homecare-provider";
-  const allRequests = requests.filter(item => item.providerId === providerId && item.kind === (role === "doctor" ? "appointment" : "homecare"));
+  const allRequests = requests.filter(item => item.kind === (role === "doctor" ? "appointment" : "homecare") && String(item.providerId || "").startsWith(role === "doctor" ? "demo-doctor-provider" : "demo-homecare-provider"));
   const visible = allRequests.filter(item => filter === "all" || (filter === "pending" ? ["pending", "requested"].includes(String(item.status || item.requestStatus).toLowerCase()) : String(item.status || item.requestStatus).toLowerCase() === filter));
   const updateRequest = (item, status) => {
     setBusyId(item.id); setNotice(""); setError("");
