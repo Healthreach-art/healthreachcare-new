@@ -41,7 +41,9 @@ export function isBookingClosed(booking) {
 
 export function canMessageBooking(booking) {
   const assigned = Boolean(booking?.providerId || booking?.doctorId || booking?.coordinatorId);
-  return Boolean(booking?.id && assigned && !isBookingClosed(booking));
+  const status = String(booking?.status || booking?.requestStatus || "").toLowerCase();
+  const acceptedStatuses = new Set(["accepted", "confirmed", "booked", "in_progress", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery"]);
+  return Boolean(booking?.id && assigned && acceptedStatuses.has(status) && !isBookingClosed(booking));
 }
 
 export function canReviewBooking(booking, reviews = []) {
