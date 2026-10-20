@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
-  Clock3, HeartPulse, Home, MapPin, Pill,
-  ShieldCheck, Stethoscope, Truck, UserRound, Video, Phone, RefreshCw,
+  Activity, ArrowRight, Bell, CalendarDays, ChevronRight,
+  HeartPulse, Home, MapPin, Pill,
+  ShieldCheck, Stethoscope, UserRound, Video, Phone,
   Upload, House, MessageCircle, AlertCircle, X
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
