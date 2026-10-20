@@ -118,8 +118,9 @@ export function transitionTestOrder(orderId, nextStatus) {
     awaiting_payment: [],
     awaiting_pharmacy: ["accepted", "cancelled"],
     accepted: ["preparing", "cancelled"],
-    preparing: ["ready_for_delivery"],
+    preparing: ["ready_for_delivery", "ready_for_pickup"],
     ready_for_delivery: ["out_for_delivery"],
+    ready_for_pickup: [],
     out_for_delivery: ["delivered"],
     delivered: [],
     cancelled: []
@@ -167,4 +168,17 @@ export function useTestWorkflow() {
     };
   }, [refresh]);
   return { ...state, refresh };
+}
+
+export function transitionTestBooking(bookingId, nextStatus) {
+  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: [], declined: [] };
+  return updateWorkflow(draft => {
+    const booking = draft.bookings.find(item => item.id === bookingId);
+    if (!booking) return { error: "Test request not found. Refresh and try again." };
+    if (booking.testOnly !== true) return { error: "This action is only available for test requests." };
+    if (!(allowed[booking.status] || []).includes(nextStatus)) return { error: `Cannot change this request from ${booking.status} to ${nextStatus}.` };
+    booking.status = nextStatus;
+    booking.updatedAt = new Date().toISOString();
+    return { value: booking };
+  });
 }
