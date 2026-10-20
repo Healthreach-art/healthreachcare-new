@@ -114,8 +114,7 @@ function App() {
     const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
   });
-  const [notifications, setNotifications] = useState([]);
-  const [notificationError] = useState("Testing mode: notifications are not connected.");
+
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkBackground, setDarkBackground] = useState(false);
   const [notice, setNotice] = useState("");
@@ -134,6 +133,16 @@ function App() {
   const [activityFilter, setActivityFilter] = useState("all");
   const workflow = useTestWorkflow();
   const activities = getActivityRecords(workflow);
+  // In-app activity notifications are derived from the same simulated request ledger.
+  // A push/email notification adapter can replace this selector when a backend exists.
+  const notifications = activities.slice(0, 5).map(item => ({
+    id: item.id,
+    title: activityKind(item),
+    message: String(activityStatus(item)).replace(/_/g, " ") + " · " + activityProviderLabel(item),
+    createdAt: item.updatedAt || item.createdAt,
+    read: true
+  }));
+  const notificationError = "";
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
 
   const payForSelectedBooking = () => {
@@ -222,7 +231,7 @@ function App() {
         <div className="tracker-latest-card">
           <div className="tracker-topline"><div><strong>{activityKind(latestActiveActivity)}</strong><p>{latestActiveActivity.id || "Preview reference"} · {activityDate(latestActiveActivity.requestedDate ? latestActiveActivity.requestedDate + "T" + (latestActiveActivity.requestedTime || "00:00") : latestActiveActivity.createdAt)}</p><small className="tracker-last-update">Last update: {activityDate(latestActiveActivity.updatedAt || latestActiveActivity.providerResponseAt || latestActiveActivity.createdAt)}</small></div><span className="tracker-status">{String(activityStatus(latestActiveActivity)).replace(/_/g," ")}</span></div>
           <div className="tracker-timeline">{activityStages(latestActiveActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
-          <p className="tracker-preview-note">Preview only. Provider, payment and driver updates are not live.</p>
+          <p className="tracker-preview-note">Updates reflect this browser’s simulated workflow. Live dispatch and push notifications are not connected.</p>
           <button className="button button-primary" onClick={()=>{setSelectedActivity(latestActiveActivity);setPage("activities");}}>View request details <ArrowRight size={16}/></button>
         </div>
       </div> : <div className="tracker-empty-state"><HeartPulse size={28}/><strong>Your care journey starts here</strong><p>Your latest active booking or medication order will appear here.</p><div className="tracker-empty-actions"><button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("doctor-booking")}>Book a doctor <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("homecare-booking")}>Request homecare <ArrowRight size={14}/></button></div></div>}
