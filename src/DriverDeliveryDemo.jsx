@@ -64,7 +64,7 @@ export default function DriverDeliveryDemo({ orders = [], refresh = () => {} }) 
     finally { setLoading(false); }
   };
   useEffect(() => {
-    try { ensureDemoDelivery(); } catch (e) { setError(e?.message || "Could not create a synthetic demo order."); }
+    try { ensureDemoDelivery(); } catch (e) { setError(e?.message || "Could not initialise the courier demo."); }
     const unsubscribe = subscribeToDeliveryUpdates(() => { refresh(); void load(); });
     void load();
     return unsubscribe;
@@ -89,7 +89,7 @@ export default function DriverDeliveryDemo({ orders = [], refresh = () => {} }) 
     setBusy("reset"); setError(""); setNotice("");
     try {
       resetDemoData(); setChecks({}); setProof({}); refresh(); void load();
-      setNotice("Demo reset. A synthetic medication order is waiting in the Pharmacy workspace.");
+      setNotice("Demo data reset. The courier queue is empty until a patient submits an order, completes simulated payment, and the pharmacy marks it ready for delivery.");
     } catch (e) { setError(e?.message || "Could not reset demo data."); }
     finally { setBusy(""); }
   };
