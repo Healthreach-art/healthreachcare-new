@@ -103,7 +103,7 @@ export function PatientMedicineShop({ onBack }) {
 }
 
 function OrderSummary({ items, subtotal, deliveryFee, total, orderId }) {
-  return <aside className="test-surface test-order-summary"><h2>Order summary</h2>{orderId && <p className="test-order-ref">Reference: {orderId}</p>}{items.map((item, index) => <div className="test-summary-line" key={item.productId || item.name + index}><span>{item.quantity} × {item.name}</span><strong>{money(item.lineTotal ?? item.unitPrice * item.quantity)}</strong></div>)}<div className="test-summary-line"><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div className="test-summary-line"><span>Delivery</span><strong>{deliveryFee ? money(deliveryFee) : "Free"}</strong></div><div className="test-summary-total"><span>Total</span><strong>{money(total)}</strong></div><small>All prices are illustrative test values.</small></aside>;
+  return <aside className="test-surface test-order-summary"><h2>Order summary</h2>{orderId && <p className="test-order-ref">Reference: {orderId}</p>}{items.map((item, index) => <div className="test-summary-line" key={item.productId || item.name + index}><span>{item.quantity} × {item.name}</span><strong>{money(item.lineTotal ?? (item.unitPrice ?? item.price) * item.quantity)}</strong></div>)}<div className="test-summary-line"><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div className="test-summary-line"><span>Delivery</span><strong>{deliveryFee ? money(deliveryFee) : "Free"}</strong></div><div className="test-summary-total"><span>Total</span><strong>{money(total)}</strong></div><small>All prices are illustrative test values.</small></aside>;
 }
 
 function OrderCard({ order }) {
@@ -126,6 +126,7 @@ export function TestRoleWorkspace({ role, onBack }) {
     setBusy(order.id); setError(""); setNotice("");
     const result = transitionTestOrder(order.id, nextStatus);
     setBusy("");
+    setStockDrafts({});
     if (result?.error) setError(result.error);
     else setNotice(`Test order ${order.id} updated to ${statusLabel(nextStatus)}. This is local test data only.`);
   };
@@ -139,7 +140,7 @@ export function TestRoleWorkspace({ role, onBack }) {
       return { value: item };
     });
     if (result?.error) setError(result.error);
-    else { setError(""); setNotice(`Test stock for ${product.name} saved.`); }
+    else { setStockDrafts({}); setError(""); setNotice(`Test stock for ${product.name} saved.`); }
   };
 
   const actionFor = order => {
