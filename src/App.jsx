@@ -3,7 +3,7 @@ import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Pill, Search,
   ShieldCheck, Stethoscope, Truck, UserRound, Users, Video, Phone, RefreshCw,
-  Upload, House, MessageCircle, AlertCircle, X, Menu
+  Upload, House, MessageCircle, AlertCircle, X
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
@@ -26,7 +26,6 @@ function App() {
   const [user] = useState(null);
   const workflow = useTestWorkflow();
   const testOrders = workflow.orders.filter(order => order.testOnly);
-  const [showNavigation, setShowNavigation] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationError] = useState("Testing mode: notifications are not connected.");
   const [doctors] = useState(sampleDoctors);
@@ -203,8 +202,7 @@ function App() {
   if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("auth")} />;
 
   return <div className="app-shell">
-    <header className="topbar"><button className="brand-button" onClick={()=>setPage("landing")}><Brand/></button><div className="topbar-right"><button className="navigation-button" aria-label="Open navigation menu" aria-expanded={showNavigation} onClick={()=>setShowNavigation(value=>!value)}><Menu size={20}/><span>Navigate</span></button><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
-    {showNavigation && <div className="navigation-popover" role="dialog" aria-label="Patient navigation"><div className="popover-head"><strong>Navigate HealthReachCare</strong><button onClick={()=>setShowNavigation(false)} aria-label="Close navigation"><X size={17}/></button></div><button className="navigation-link" onClick={()=>{setPage("landing");setShowNavigation(false);}}><Home size={18}/><span>Public landing page</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("auth");setShowNavigation(false);}}><ShieldCheck size={18}/><span>Sign in / demo access</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("home");setShowNavigation(false);}}><HeartPulse size={18}/><span>Patient home</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("medicines");setShowNavigation(false);}}><Pill size={18}/><span>Order medication</span><ChevronRight size={16}/></button></div>}
+    <header className="topbar"><button className="brand-button" onClick={()=>setPage("landing")}><Brand/></button><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
     {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
 </header>
     <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "search" ? renderDoctorDirectory() : page === "activities" ? renderActivities() : page === "medicines" ? <PatientMedicineShop onBack={()=>setPage("home")}/> : renderAccount()}</main>
