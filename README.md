@@ -1,10 +1,10 @@
 # HealthReachCare
 
-Patient-facing HealthReachCare React/Vite app with a public, open-access test landing page.
+Patient-facing HealthReachCare React/Vite app with a public landing page and a separate account-access screen.
 
 ## Test environment
 
-This build is for product walkthroughs and workflow testing only. No login is required to open the Patient, Doctor, Pharmacy, Driver, or Admin test workspaces.
+This build is for product walkthroughs and workflow testing only. The public landing page leads to an account-access screen. In development, demo access is enabled there; in a production build, demo workspaces remain hidden unless `VITE_ENABLE_DEMO_ACCESS=true` is explicitly configured. Real sign-in and account creation are not connected yet.
 
 1. Install Node.js 20.19+ or 22.12+.
 2. Run `npm install`.
@@ -25,8 +25,8 @@ The active test flow does not initialise Firebase and does not require Firebase 
 
 ## Data and security limitations
 
-- This is **not production-ready**. The role pages are intentionally open and do not provide authentication, authorisation, or tenant isolation.
+- This is **not production-ready**. The sign-in form is a disabled UI placeholder, not real authentication. When demo access is enabled, role pages still do not provide authentication, authorisation, or tenant isolation. Do not enable demo access for a public production deployment.
 - Shared workflow data is stored in browser local storage. It syncs across tabs using the same browser origin, but **not across different devices, browsers, or users**.
 - All catalogue items, inventory counts, fees, test orders, and payment authorisations are sample/test data. Do not enter real patient information or treat the catalogue as a real pharmacy.
 - A simulated test authorisation is never a real paid status. Real payment processing still requires a payment-provider integration, server-side payment initiation, signature-verified webhook, and reconciliation.
-- Before production, restore secure authentication and role-based access; move orders, inventory, booking requests and payments to a trusted shared backend; validate pharmacy/provider assignments; and perform real end-to-end tests.
+- Before production, integrate and test a real identity provider, enforce server-side role-based access and tenant isolation, move orders/inventory/bookings/payments to a trusted shared backend, validate pharmacy/provider assignments, configure real payment initiation plus signature-verified webhooks, and perform real end-to-end tests. Keep `VITE_ENABLE_DEMO_ACCESS` unset or false in production.
