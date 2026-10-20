@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { auth, db, firebaseConfigured } from "./firebase";
+import { useMemo, useState } from "react";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Pill, Search,
   ShieldCheck, Stethoscope, Truck, UserRound, Users, Video, Phone, RefreshCw,
-  Upload, House, MessageCircle, AlertCircle, X
+  Upload, House, MessageCircle, AlertCircle, X, Menu
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
+import { PatientMedicineShop, TestRoleWorkspace, TestingLanding } from "./TestingPortal.jsx";
+import { useTestWorkflow } from "./test-workflow.js";
 
 const specialties = ["All specialties","GP","Paediatrician","Cardiologist","Dermatologist","Gynaecologist","Psychiatrist","Psychologist","ENT","Ophthalmologist","Orthopaedic Surgeon","Neurologist","Endocrinologist","Urologist","Dentist","Physiotherapist"];
 const navItems = [
@@ -23,15 +22,11 @@ function Brand() {
 }
 
 function App() {
-  const [page, setPage] = useState("home");
-  const [user, setUser] = useState(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authName, setAuthName] = useState("");
-  const [authMode, setAuthMode] = useState("signin");
-  const [authError, setAuthError] = useState("");
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authNotice, setAuthNotice] = useState("");
+  const [page, setPage] = useState("landing");
+  const [user] = useState(null);
+  const workflow = useTestWorkflow();
+  const testOrders = workflow.orders.filter(order => order.testOnly);
+  const [showNavigation, setShowNavigation] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationError] = useState("Testing mode: notifications are not connected.");
   const [doctors] = useState(sampleDoctors);
@@ -165,7 +160,7 @@ function App() {
       <div className="dashboard-panel-heading tracker-heading">
         <span className="dashboard-panel-icon tracker-icon"><Truck size={20}/></span>
         <div><div className="eyebrow">ORDER UPDATES</div><h2>Delivery Tracker</h2><p>Follow your medication order from pharmacy to your door.</p></div>
-        <span className="status-pill">No active order</span>
+        <span className="status-pill">{testOrders.length ? String(testOrders[0].status).replace(/_/g," ") : "No active order"}</span>
       </div>
       <div className="tracker-layout">
         <div className="tracker-timeline">
@@ -188,10 +183,7 @@ function App() {
         <div><div className="eyebrow">YOUR ORDER HISTORY</div><h2>Recent Orders</h2><p>Review your latest medication orders and their status.</p></div>
         <button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={15}/></button>
       </div>
-      <div className="dashboard-empty recent-empty">
-        <Pill size={25}/>
-        <div><strong>No recent orders yet</strong><p>Your confirmed orders will appear here with the pharmacy, date, status and total.</p></div>
-      </div>
+      {testOrders.length ? <div className="recent-order-list">{testOrders.slice(0,3).map(order=><article className="recent-order-row" key={order.id}><span className="dashboard-panel-icon recent-icon"><Pill size={18}/></span><div><strong>{order.id}</strong><p>{order.items.map(item=>item.quantity+" × "+item.name).join(", ")}</p><small>Payment: {String(order.paymentStatus).replace(/_/g," ")} · Status: {String(order.status).replace(/_/g," ")}</small></div><strong>R{Number(order.total || 0).toFixed(2)}</strong></article>)}<button className="button button-outline" onClick={()=>setPage("medicines")}>View all orders <ArrowRight size={15}/></button></div> : <div className="dashboard-empty recent-empty"><Pill size={25}/><div><strong>No recent orders yet</strong><p>Your test orders will appear here and update as the pharmacy and driver change their status.</p></div></div>}
     </div>
   </section>;
 
@@ -200,26 +192,18 @@ function App() {
   const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>Testing mode is active. Live pharmacy stock is not connected; no invented products or prices are shown.</span></div><button className="button button-primary" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
 
   const renderAccount = () => <section className="page-content">
-    <div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Sign in to manage your bookings and requests securely.</p>
-    <div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign in or create an account to continue."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div>
-    {authNotice && <div className="inline-message"><CheckCircle2 size={18}/><span>{authNotice}</span></div>}
-    {authError && <div className="state-card state-error"><AlertCircle size={20}/><div><strong>Account action failed</strong><p>{authError}</p></div></div>}
-    {!user && <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>{authMode === "signup" ? "Create your account" : "Sign in"}</h2><p>Bookings are linked to your authenticated account.</p></div></div>
-      {!firebaseConfigured && <div className="inline-message"><AlertCircle size={18}/><span>Firebase configuration is missing. Add the VITE_FIREBASE_API_KEY, AUTH_DOMAIN, PROJECT_ID, STORAGE_BUCKET, MESSAGING_SENDER_ID and APP_ID settings.</span></div>}
-      <form onSubmit={handleAuth} className="auth-form">
-        {authMode === "signup" && <label>Full name<input autoComplete="name" required value={authName} onChange={e=>setAuthName(e.target.value)} placeholder="Your full name"/></label>}
-        <label>Email address<input type="email" autoComplete="email" required value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="you@example.com"/></label>
-        <label>Password<input type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={6} required value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label>
-        <button className="button button-primary full" type="submit" disabled={authBusy || !firebaseConfigured}>{authBusy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button>
-      </form>
-      <button className="text-button" onClick={()=>{setAuthMode(authMode === "signup" ? "signin" : "signup");setAuthError("");}}>{authMode === "signup" ? "Already have an account? Sign in" : "New to HealthReachCare? Create an account"}</button>
-    </div>}
-    {user && <div className="panel"><h2>Your account is connected</h2><p className="muted">Use your account to submit booking requests. Provider acceptance, availability reservation and secure payment still require the trusted backend workflow.</p><button className="button button-outline" onClick={handleSignOut}>Sign out</button></div>}
-    <div className="panel"><h2>Need help?</h2><p className="muted">Contact HealthReachCare support for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured by the HealthReachCare team.")}><MessageCircle size={17}/> Contact support</button></div>
+    <div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">You are using the open HealthReachCare test environment.</p>
+    <div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>Test Patient</h2><p className="muted">No account or login required in this testing build.</p></div><span className="account-status"><span className="status-dot status-muted"/>Guest test access</span></div>
+    <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Testing mode</h2><p>Local test records only</p></div></div><p className="muted">Bookings, pharmacy orders and payment simulations use this browser's local storage. They are not sent to real providers and are not suitable for real patient information.</p><button className="button button-primary" onClick={()=>setPage("landing")}>Return to testing landing page <ArrowRight size={16}/></button></div>
+    <div className="panel"><h2>Need help?</h2><p className="muted">Support contact details will be configured before launch.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details have not been configured in test mode.")}><MessageCircle size={17}/> Contact support</button></div>
   </section>;
 
+  if (page === "landing") return <TestingLanding onOpenRole={role => setPage(role === "patient" ? "home" : "test-" + role)} />;
+  if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("landing")} />;
+
   return <div className="app-shell">
-    <header className="topbar"><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
+    <header className="topbar"><button className="brand-button" onClick={()=>setPage("landing")}><Brand/></button><div className="topbar-right"><button className="navigation-button" aria-label="Open navigation menu" aria-expanded={showNavigation} onClick={()=>setShowNavigation(value=>!value)}><Menu size={20}/><span>Navigate</span></button><span className="secure-label"><ShieldCheck size={15}/> Care you can trust</span><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
+    {showNavigation && <div className="navigation-popover" role="dialog" aria-label="Patient navigation"><div className="popover-head"><strong>Navigate HealthReachCare</strong><button onClick={()=>setShowNavigation(false)} aria-label="Close navigation"><X size={17}/></button></div><button className="navigation-link" onClick={()=>{setPage("landing");setShowNavigation(false);}}><Home size={18}/><span>Testing landing page</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("home");setShowNavigation(false);}}><HeartPulse size={18}/><span>Patient home</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("medicines");setShowNavigation(false);}}><Pill size={18}/><span>Order medication</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("test-doctor");setShowNavigation(false);}}><Stethoscope size={18}/><span>Doctor workspace</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("test-pharmacy");setShowNavigation(false);}}><Pill size={18}/><span>Pharmacy workspace</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("test-driver");setShowNavigation(false);}}><Truck size={18}/><span>Driver workspace</span><ChevronRight size={16}/></button><button className="navigation-link" onClick={()=>{setPage("test-admin");setShowNavigation(false);}}><ShieldCheck size={18}/><span>Admin workspace</span><ChevronRight size={16}/></button></div>}
     {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
 </header>
     <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "search" ? renderDoctorDirectory() : page === "activities" ? renderActivities() : page === "medicines" ? renderMedicines() : renderAccount()}</main>
