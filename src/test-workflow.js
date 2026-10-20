@@ -154,7 +154,7 @@ export function recordTestPayment(orderId, method) {
 
 export function transitionTestOrder(orderId, nextStatus) {
   const allowed = {
-    awaiting_payment: [],
+    awaiting_payment: ["cancelled"],
     awaiting_pharmacy: ["accepted", "cancelled"],
     accepted: ["preparing", "cancelled"],
     preparing: ["ready_for_delivery", "ready_for_pickup"],
