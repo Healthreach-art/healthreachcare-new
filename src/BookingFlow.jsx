@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Heart, House, ShieldCheck, Stethoscope, AlertCircle, Accessibility, HandHeart, Pill, Sparkles } from "lucide-react";
 import "./BookingFlow.css";
-import { configuredHomecarePrice, formatZar, recordCareEvent } from "./care-journey.js";
+import { configuredHomecareFee, configuredHomecarePrice, formatZar, recordCareEvent } from "./care-journey.js";
 const services = [
   { id: "personal_care", title: "Personal care", description: "Daily living and personal support" },
   { id: "elderly_care", title: "Elderly care", description: "Companionship and everyday support" },
@@ -19,7 +19,6 @@ const modes = ["In-person", "Video", "Phone"];
 const times = ["08:00", "09:00", "10:00", "11:00", "12:00", "14:00", "16:00", "18:00"];
 export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
   const homecare = type === "homecare";
-  const servicePrice = homecare ? configuredHomecarePrice(service.id, import.meta.env || {}) : null;
   const [step, setStep] = useState(0);
   const [service, setService] = useState(services[0]);
   const [doctor, setDoctor] = useState(demoDoctors[0]);
@@ -33,6 +32,10 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
   const [submittedRequest, setSubmittedRequest] = useState(null);
+  const servicePrice = homecare ? configuredHomecarePrice(service.id, import.meta.env || {}, duration) : null;
+  const serviceFee = homecare ? configuredHomecareFee("service", import.meta.env || {}) : null;
+  const travelFee = homecare ? configuredHomecareFee("travel", import.meta.env || {}) : null;
+  const homecareTotal = servicePrice !== null && serviceFee !== null && travelFee !== null ? servicePrice + serviceFee + travelFee : null;
   const dateMin = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const next = () => {
     setMessage("");
@@ -44,7 +47,7 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
   const submit = () => {
     if (homecare) {
       setSubmittedRequest(null);
-      setMessage("Checkout is not connected in preview mode. No payment was taken and no booking was created. Configure the payment provider and a fixed service price before enabling this flow.");
+      setMessage("Checkout is not connected in preview mode. No payment was taken and no booking was created. A server-verified payment provider is required before this flow can submit a booking.");
       return;
     }
     try {
@@ -98,10 +101,10 @@ export default function BookingFlow({ type, user, onBack, onOpenActivities }) {
       <label className="booking-field"><span>Preferred time</span><select value={time} onChange={e => setTime(e.target.value)} required><option value="">Choose a time</option>{times.map(t => <option key={t} value={t}>{t}</option>)}</select></label>
       {homecare && <label className="booking-field"><span>Duration</span><select value={duration} onChange={e => setDuration(e.target.value)}>{["1","2","4","8"].map(h => <option key={h} value={h}>{h} {h === "1" ? "hour" : "hours"}</option>)}</select></label>}
     </div>{!homecare && <div className="booking-field"><span>Consultation type</span><div className="booking-option-row">{modes.map(m => <button key={m} className={mode === m ? "booking-option selected" : "booking-option"} onClick={() => setMode(m)}>{m}</button>)}</div></div>}<label className="booking-field"><span>Additional notes (optional)</span><textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Avoid detailed medical information in this preview."/></label></div>}
-    {step === 2 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Check your details</h2><p>Check your details before sending.</p></div></div><div className="booking-summary-table">{[["Patient",name],["Service",homecare ? service.title : "Doctor appointment"],["Consultation",homecare ? duration + " hours" : mode],["Address",homecare ? address : "To be selected after provider directory connects"],["Preferred date",date],["Preferred time",time],["Request status",homecare ? "Not submitted — payment required" : "Waiting for provider review"],["Test provider",homecare ? "Not assigned — preview only" : doctor.name],["Service price",homecare ? (servicePrice === null ? "Not configured — checkout unavailable" : formatZar(servicePrice)) : "R" + doctor.consultationFee.toFixed(2)],["Pricing","Configured fixed price only; no quote workflow"],["Payment","Not connected — no payment can be taken"]].map(([label,value]) => <div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div></div>}
+    {step === 2 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Check your details</h2><p>Check your details before sending.</p></div></div><div className="booking-summary-table">{[["Patient",name],["Service",homecare ? service.title : "Doctor appointment"],["Consultation",homecare ? duration + " hours" : mode],["Address",homecare ? address : "To be selected after provider directory connects"],["Preferred date",date],["Preferred time",time],["Request status",homecare ? "Not submitted — payment required" : "Waiting for provider review"],["Test provider",homecare ? "Not assigned — preview only" : doctor.name],["Fixed service price",homecare ? (servicePrice === null ? "Not configured for this service and duration" : formatZar(servicePrice)) : "R" + doctor.consultationFee.toFixed(2)],["Service fee",homecare ? (serviceFee === null ? "Not configured" : formatZar(serviceFee)) : "Included in illustrative doctor fee"],["Travel fee",homecare ? (travelFee === null ? "Not configured" : formatZar(travelFee)) : "Not applicable"],["Total",homecareTotal === null ? "Checkout unavailable until all prices and fees are configured" : formatZar(homecareTotal)],["Pricing","Fixed configured price only; no quote workflow"],["Payment","Not connected — no payment can be taken"]].map(([label,value]) => <div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div></div>}
     {step === 3 && <div className="booking-main-card booking-confirmation"><div className="booking-success-illustration"><CheckCircle2 size={42}/></div><div className="eyebrow">REQUEST CREATED</div><h2>Test request received</h2><p className="booking-muted">Your test request is in the {homecare ? "Homecare Provider" : "Doctor"} workspace on this device. It is waiting for review.</p><div className="booking-summary-table">{[["Reference",submittedRequest?.id || "Test request"],["Service",submittedRequest?.serviceType || service.title],["Preferred date",submittedRequest?.requestedDate || date],["Preferred time",submittedRequest?.requestedTime || time],["Status","Waiting for provider response"],["Payment","Not connected"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value}</strong></div>)}</div><div className="booking-confirm-note"><ShieldCheck size={17}/> Test only · No provider contacted · No payment taken</div></div>}
     {message && <div className="booking-validation-error"><AlertCircle size={17}/> {message}</div>}
-    {step < 3 && <div className="booking-actions"><button type="button" className="button button-outline" onClick={step === 0 ? onBack : () => {setStep(current => current - 1);setMessage("");}}><ArrowLeft size={16}/> {step === 0 ? "Home" : "Back"}</button>{step < 2 ? <button type="button" className="button button-primary" onClick={next}>{step === 0 ? "Continue to details" : "Review request"} <ArrowRight size={16}/></button> : <button type="button" className="button button-primary" onClick={submit}>Submit test request <ArrowRight size={16}/></button>}</div>}
+    {step < 3 && <div className="booking-actions"><button type="button" className="button button-outline" onClick={step === 0 ? onBack : () => {setStep(current => current - 1);setMessage("");}}><ArrowLeft size={16}/> {step === 0 ? "Home" : "Back"}</button>{step < 2 ? <button type="button" className="button button-primary" onClick={next}>{step === 0 ? "Continue to details" : "Review request"} <ArrowRight size={16}/></button> : <button type="button" className="button button-primary" onClick={submit} disabled={homecare && homecareTotal === null}>{homecare ? (homecareTotal === null ? "Checkout unavailable — configure price and fees" : "Pay " + formatZar(homecareTotal)) : "Submit test request"} <ArrowRight size={16}/></button>}</div>}
     {step === 3 && <div className="booking-actions"><button type="button" className="button button-outline" onClick={onBack}>Back to home</button>{!homecare && <button type="button" className="button button-primary" onClick={onOpenActivities}>View Activities <ArrowRight size={16}/></button>}</div>}
   </section>;
 }
