@@ -15,7 +15,8 @@ const dateTime = value => value ? new Date(value).toLocaleString("en-ZA", { date
 const statusLabel = value => String(value || "pending").replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
 const roles = [
   { id: "patient", title: "Patient", description: "Browse the test catalogue, place an order and follow its status.", icon: UserRound },
-  { id: "doctor", title: "Doctor", description: "Review test appointment and home-care requests.", icon: Stethoscope },
+  { id: "doctor", title: "Doctor", description: "Review and respond to patient appointment test requests.", icon: Stethoscope },
+  { id: "homecare", title: "Homecare provider", description: "Review and respond to homecare test requests.", icon: House },
   { id: "pharmacy", title: "Pharmacy", description: "Manage test stock, receive patient orders and prepare fulfilment.", icon: Pill },
   { id: "driver", title: "Driver", description: "View delivery-ready orders and update delivery progress.", icon: Truck },
   { id: "admin", title: "Admin", description: "Monitor test orders, payment attempts, stock and requests.", icon: ShieldCheck }
@@ -23,7 +24,7 @@ const roles = [
 
 export function TestingLanding({ onOpenAuth }) {
   return <main className="test-landing">
-    <header className="test-landing-header"><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong><small>Better access. Healthier communities.</small></div></div><span className="test-open-chip"><span/> HEALTHCARE PLATFORM</span></header>
+    <header className="test-landing-header"><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong></div></div><span className="test-open-chip"><span/> HEALTHCARE PLATFORM</span></header>
     <section className="test-hero">
       <div className="test-hero-copy"><div className="eyebrow">ONE CONNECTED CARE JOURNEY</div><h1>Better access. Healthier communities.</h1><p>Find care, order medication and connect with the teams that support your health — in one connected platform.</p><div className="test-hero-actions"><button className="button button-primary" onClick={onOpenAuth}>Sign in or create an account <ArrowRight size={17}/></button><button className="test-secondary-cta" onClick={onOpenAuth}>Explore demo access</button></div><div className="test-trust-line"><ShieldCheck size={16}/> Secure access is planned for patient and provider accounts.</div></div>
       <div className="test-hero-art"><div className="test-art-ring"><HeartPulse size={74}/></div><span className="test-art-badge badge-one"><Pill size={17}/> Pharmacy</span><span className="test-art-badge badge-two"><Truck size={17}/> Delivery</span></div>
@@ -39,7 +40,7 @@ const DEMO_ACCESS_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_D
 export function TestingAuth({ onOpenRole, onBack }) {
   const [showDemoNotice, setShowDemoNotice] = useState(false);
   return <main className="test-landing test-auth-page">
-    <header className="test-landing-header"><button className="test-auth-brand-button" onClick={onBack}><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong><small>Better access. Healthier communities.</small></div></div></button><span className="test-open-chip"><span/> ACCOUNT ACCESS</span></header>
+    <header className="test-landing-header"><button className="test-auth-brand-button" onClick={onBack}><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong></div></div></button><span className="test-open-chip"><span/> ACCOUNT ACCESS</span></header>
     <button className="test-back-link" onClick={onBack}><ArrowLeft size={16}/> Back to landing page</button>
     <section className="test-auth-layout">
       <div className="test-auth-intro"><div className="eyebrow">WELCOME BACK</div><h1>Sign in to HealthReachCare</h1><p>Access your healthcare workspace securely. Patient, doctor, pharmacy, driver and admin access will use verified accounts and role permissions in production.</p><div className="test-auth-security"><ShieldCheck size={20}/><div><strong>Account security is not switched on yet</strong><span>This build is still in testing. Real sign-in and account creation are not connected; no credentials are accepted or saved.</span></div></div></div>

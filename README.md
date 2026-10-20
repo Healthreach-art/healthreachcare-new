@@ -15,12 +15,13 @@ No `.env.local` or Firebase web configuration is required for this UI test.
 
 ## Booking flows in test mode
 
-- Doctor booking: Choose, Compare, Schedule, Pay, Confirm, Care, Favourite.
-- Home-care booking: Service, Details, Submit, Quote, Pay, Track, Favourite.
-- Sample practitioners, time slots, fees and quote amounts are illustrative UI fixtures only.
+- Doctor booking: choose an illustrative sample doctor, select a consultation type and preferred date/time, submit a test request, then review it in the doctor test workspace.
+- Home-care booking: select a care type, enter visit details and submit a test request, then review it in the homecare provider test workspace.
+- Sample practitioners, catalogue items, stock levels, fees and delivery charges are illustrative test fixtures only. They are not real providers, pharmacy inventory, availability or prices.
+- The patient medicine page opens the test catalogue and mock checkout workflow. Test orders and test stock changes are shared with pharmacy/driver demo workspaces in the same browser origin.
 - Test requests may be saved to this browser's local storage under `healthreachcare-test-bookings`.
-- Requests are **not** sent to doctors, clinics, or home-care providers. Availability is not checked. No payment is collected or marked paid.
-- The header has no sidebar/dropdown navigation. The existing patient bottom navigation remains Home, Activities, Search and Account.
+- Requests are **not** sent to doctors, clinics, or home-care providers. Sample doctor selection is not a live directory and availability is not checked. The test checkout records a clearly marked mock authorisation only; no payment is collected.
+- The header has no sidebar/dropdown navigation. The patient bottom navigation is Home, Activities and Account. The patient home does not show the browser-local test bookings panel, delivery-tracker placeholder, or recent-order-history placeholder.
 
 ## Before production
 

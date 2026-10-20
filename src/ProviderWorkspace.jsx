@@ -26,14 +26,14 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
     };
   }, []);
 
-  const providerId = role === "doctor" ? "demo-doctor-provider" : "demo-homecare-provider";
-  const allRequests = requests.filter(item => item.providerId === providerId && item.kind === (role === "doctor" ? "appointment" : "homecare"));
+  const allRequests = requests.filter(item => item.kind === (role === "doctor" ? "appointment" : "homecare") && String(item.providerId || "").startsWith(role === "doctor" ? "demo-doctor-provider" : "demo-homecare-provider"));
   const visible = allRequests.filter(item => filter === "all" || (filter === "pending" ? ["pending", "requested"].includes(String(item.status || item.requestStatus).toLowerCase()) : String(item.status || item.requestStatus).toLowerCase() === filter));
   const updateRequest = (item, status) => {
     setBusyId(item.id); setNotice(""); setError("");
     try {
       const current = readRequests();
-      const target = current.findIndex(row => row.id === item.id && row.providerId === providerId);
+      const expectedPrefix = role === "doctor" ? "demo-doctor-provider" : "demo-homecare-provider";
+      const target = current.findIndex(row => row.id === item.id && String(row.providerId || "").startsWith(expectedPrefix) && row.kind === (role === "doctor" ? "appointment" : "homecare"));
       if (target < 0) throw new Error("This test request is no longer available.");
       if (!["pending", "requested"].includes(String(current[target].status || current[target].requestStatus).toLowerCase())) throw new Error("This request has already been actioned.");
       current[target] = { ...current[target], status, requestStatus: status, providerResponseAt: new Date().toISOString() };
