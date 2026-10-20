@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Pill, Search,
@@ -38,6 +38,15 @@ function App() {
   const [formType, setFormType] = useState("");
   const [form, setForm] = useState({name:"",phone:"",details:"",location:"",date:"",time:"",service:"",duration:"",doctorId:"",doctorName:""});
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [testBookings, setTestBookings] = useState([]);
+
+  useEffect(() => {
+    const refresh = () => { try { setTestBookings(JSON.parse(localStorage.getItem("healthreachcare-test-bookings") || "[]")); } catch { setTestBookings([]); } };
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener("healthreachcare-test-bookings-updated", refresh);
+    return () => { window.removeEventListener("storage", refresh); window.removeEventListener("healthreachcare-test-bookings-updated", refresh); };
+  }, []);
 
 
 
@@ -157,7 +166,19 @@ function App() {
     </div>
 
     <div className="dashboard-panel">
-      <div className="dashboard-panel-heading recent-heading">
+      <div className="dashboard-panel">
+      <div className="dashboard-panel-heading">
+        <span className="dashboard-panel-icon tracker-icon"><CalendarDays size={20}/></span>
+        <div><div className="eyebrow">TEST BOOKINGS</div><h2>Doctor & Homecare Requests</h2><p>Follow the status of requests submitted in this browser.</p></div>
+      </div>
+      {testBookings.filter(item => item.patientUid === "local-test-patient").length ? <div className="provider-request-list">{testBookings.filter(item => item.patientUid === "local-test-patient").map(item => <article className="provider-request-card" key={item.id}>
+        <div className="provider-request-head"><div><span className="provider-request-type">{item.kind === "homecare" ? "HOMECARE REQUEST" : "DOCTOR APPOINTMENT"}</span><h3>{item.providerName}</h3><p>{item.requestedDate} · {item.requestedTime}</p></div><span className={"request-status status-" + String(item.status || "pending").toLowerCase()}>{String(item.status || "pending").replace(/_/g," ")}</span></div>
+        <div className="provider-request-details"><p><strong>Request:</strong> {item.kind === "homecare" ? item.serviceType : item.consultationMode + " consultation"}</p><p><strong>Payment:</strong> Not connected</p></div>
+      </article>)}</div> : <div className="dashboard-empty"><CalendarDays size={25}/><div><strong>No test bookings yet</strong><p>Submit a doctor appointment or homecare request to test the provider workflow.</p></div></div>}
+      <div className="inline-message"><AlertCircle size={18}/><span>Testing only: this list uses browser storage, not a server. Requests are visible only in the same browser profile and no real provider or payment service is connected.</span></div>
+    </div>
+
+    <div className="dashboard-panel-heading recent-heading">
         <span className="dashboard-panel-icon recent-icon"><ClipboardList size={20}/></span>
         <div><div className="eyebrow">YOUR ORDER HISTORY</div><h2>Recent Orders</h2><p>Review your latest medication orders and their status.</p></div>
         <button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={15}/></button>
