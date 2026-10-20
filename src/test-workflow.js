@@ -380,7 +380,7 @@ export function useTestWorkflow() {
   return { ...state, refresh };
 }
 
-export function saveTestEnquiry({ type, patientName, phone, location = "", details, service = "", date = "", time = "", duration = "" }) {
+export function saveTestEnquiry({ type, patientName, phone, email = "", location = "", details, service = "", date = "", time = "", duration = "" }) {
   const allowed = ["prescription", "support"];
   if (!allowed.includes(type)) return { error: "Choose a supported enquiry type." };
   if (!String(patientName || "").trim() || !String(phone || "").trim()) return { error: "Name and contact number are required." };
@@ -389,7 +389,7 @@ export function saveTestEnquiry({ type, patientName, phone, location = "", detai
   const enquiry = {
     id: "HRC-ENQ-" + Date.now().toString(36).toUpperCase(),
     type, patientName: String(patientName).trim().slice(0,100),
-    phone: String(phone).trim().slice(0,40), location: String(location).trim().slice(0,160),
+    phone: String(phone).trim().slice(0,40), email: String(email || "").trim().slice(0,254), location: String(location).trim().slice(0,160),
     details: String(details).trim().slice(0,1000), service: String(service).trim().slice(0,120),
     date, time, duration, status: "awaiting_admin_review", createdAt: now, updatedAt: now, testOnly: true
   };
