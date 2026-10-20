@@ -78,6 +78,7 @@ export default function BookingFlow({ type, onBack }) {
     setError("");
     if (step === 2 && (!date || !time)) { setError("Choose a preferred date and time to continue."); return; }
     if (homecare && step === 1 && (!name.trim() || !phone.trim() || !address.trim())) { setError("Enter your name, phone number and care address."); return; }
+    if (homecare && step === 1 && (!date || !time)) { setError("Choose a preferred date and time for the care visit."); return; }
     if (!homecare && step === 2 && (!name.trim() || !phone.trim())) { setError("Enter your name and phone number to continue."); return; }
     if (homecare && step === 2 && !saved) saveTestRequest();
     if (!homecare && step === 3 && !saved) saveTestRequest();
