@@ -32,3 +32,28 @@ Do not collect or accept payment until all of the following are implemented and 
 7. Configure Firebase Functions/Cloudflare backend deployment, secrets, webhook URL, provider account/currency, Firestore rules and end-to-end sandbox tests for the intended production environment.
 
 Until those pieces are configured, accepted requests explicitly remain unpaid and the UI explains that checkout is unavailable. This is a safety gate, not a successful payment integration.
+
+
+## Patient booking flow ported from the original HealthReachCare workflow
+
+The new Vite repository now uses Firebase Authentication for patient identity and the booking cards submit authenticated requests to Firestore instead of writing fake requests to browser local storage.
+
+### Doctor appointment journey
+1. Load only records in `doctors` where `isActive == true` and `isVerified == true`.
+2. Select a practitioner and consultation mode.
+3. Enter patient contact details and preferred date/time.
+4. Review the request and submit it to `appointments` with `patientUid`, `doctorId`, `requestStatus: pending`, and `paymentStatus: not_started`.
+5. The assigned provider can review the request through the Provider workspace. A preferred time is not a confirmed slot until a trusted backend reserves and confirms availability.
+
+### Homecare journey
+1. Select the requested care service and enter the patient's contact details, address, preferred visit time, duration and notes.
+2. Look for approved, verified records in `homecareProviders` to display a rate estimate only when a matching saved rate exists.
+3. Submit the request to `homecareRequests` with `requestStatus: pending`, `paymentStatus: not_started`, and no client-supplied payable total or provider assignment.
+4. An administrator/coordinator must assign an approved provider. The request remains pending until the provider and visit are confirmed.
+5. The estimate is not a charge. Do not take payment from the browser or treat a request as confirmed.
+
+### Important production boundary
+- `firestore.rules` is deny-by-default for other collections and restricts patient-created requests to the signed-in patient. Review and test these rules against the actual Firebase project before deployment.
+- The original repository's trusted server actions, transactional slot reservation, verified payment callbacks, and payment reconciliation are not drop-in compatible with this Vite-only repository. The new repository still needs a trusted backend for server-calculated homecare totals, appointment availability reservation, secure checkout initialization, payment webhook verification, refunds, and final confirmation.
+- Never mark an appointment or homecare visit as paid based on a browser action. The current booking screens explicitly show requests as pending and payments as not collected.
+- Firebase Authentication and Firestore must be configured using the `VITE_FIREBASE_*` environment variables. The `doctors`, `homecareProviders`, `appointments`, `homecareRequests`, `user_roles`, and `profiles` collections must follow the documented field contracts.
