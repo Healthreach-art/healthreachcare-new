@@ -1,0 +1,34 @@
+/* Additive styles for the PR #39 HealthReachCare Courier design. */
+.driver-demo-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin:0 0 16px;padding:14px 16px;border:1px solid #e1eae4;border-radius:14px;background:#fff}
+.driver-demo-toolbar>label{display:flex;align-items:center;gap:10px;color:#456052;font-size:11px;font-weight:800}
+.driver-demo-toolbar select{min-width:145px;border:1px solid #d7e2da;border-radius:9px;padding:9px 10px;background:#fff;color:#203b2d}
+.driver-demo-toolbar>div{display:flex;gap:8px;flex-wrap:wrap}
+.driver-demo-order-card{margin:12px 0;padding:17px;border:1px solid #e1eae4;border-radius:15px;background:#fff;box-shadow:0 4px 14px rgba(24,55,42,.035)}
+.driver-demo-order-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.driver-demo-order-head>div{flex:1;min-width:150px}
+.driver-demo-order-head>div strong,.driver-demo-order-head>div small{display:block}
+.driver-demo-order-head>div strong{font-size:13px;color:#1e3e2e;overflow-wrap:anywhere}
+.driver-demo-order-head>div small{margin-top:5px;color:#718278;font-size:11px;line-height:1.5}
+.driver-demo-order-head>.test-status{text-transform:capitalize}
+.driver-demo-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0 14px;padding:12px 10px;border-radius:11px;background:#f5f8f5}
+.driver-demo-step{position:relative;display:flex;align-items:center;gap:7px;min-width:0;color:#8b9b91}
+.driver-demo-step:not(:last-child):after{content:"";position:absolute;left:26px;right:-8px;top:12px;height:1px;background:#d6e2d8}
+.driver-demo-step>span{position:relative;z-index:1;display:grid;place-items:center;width:25px;height:25px;flex:0 0 25px;border:1px solid #d1ddd4;border-radius:50%;background:#fff;font-size:10px;font-weight:800}
+.driver-demo-step.is-complete{color:#19754e}
+.driver-demo-step.is-complete>span{border-color:#1c9664;background:#e4f5eb;color:#176a47}
+.driver-demo-step small{font-size:10px;font-weight:750;line-height:1.3}
+.driver-demo-action-panel{display:grid;gap:10px;margin-top:14px;padding:14px;border:1px solid #dce9df;border-radius:12px;background:#f8fbf8}
+.driver-demo-action-panel h3{display:flex;align-items:center;gap:8px;margin:0;color:#214532;font-size:13px}
+.driver-demo-action-panel p{margin:0;color:#657a6d;font-size:11px;line-height:1.65}
+.driver-demo-action-panel label{display:flex;align-items:flex-start;gap:9px;color:#3e5a49;font-size:11px;line-height:1.5}
+.driver-demo-action-panel input[type=checkbox]{margin-top:2px;accent-color:#16855a}
+.driver-demo-action-panel .button{justify-self:start}
+.driver-demo-proof{display:flex;align-items:center;gap:10px;margin:13px 0 0;padding:12px;border-radius:10px;background:#eaf7ee;color:#176a47}
+.driver-demo-proof>div{flex:1;min-width:0}
+.driver-demo-proof strong,.driver-demo-proof small{display:block}
+.driver-demo-proof small{margin-top:3px;overflow-wrap:anywhere;font-size:10px;color:#537b62}
+.driver-demo-proof>strong{white-space:nowrap}
+.driver-demo-fee{display:inline-flex;align-items:center;gap:8px;font-size:10px;color:#64786c}
+.driver-demo-fee strong{font-size:13px;color:#1a6b47}
+.driver-demo-footnote{font-size:11px;line-height:1.65;color:#6e8176}
+@media(max-width:600px){.driver-demo-toolbar{align-items:stretch;flex-direction:column}.driver-demo-toolbar>label{align-items:flex-start;flex-direction:column}.driver-demo-toolbar select{width:100%}.driver-demo-toolbar>div{display:grid;grid-template-columns:1fr 1fr}.driver-demo-toolbar .button{justify-content:center;white-space:normal}.driver-demo-steps{gap:4px;padding:10px 6px}.driver-demo-step{flex-direction:column;align-items:flex-start;gap:5px}.driver-demo-step:not(:last-child):after{left:21px;right:-5px;top:12px}.driver-demo-step small{font-size:9px}.driver-demo-order-card{padding:12px}.driver-demo-proof{align-items:flex-start;flex-wrap:wrap}}
