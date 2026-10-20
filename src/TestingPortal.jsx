@@ -15,6 +15,8 @@ const dateTime = value => value ? new Date(value).toLocaleString("en-ZA", { date
 const statusLabel = value => String(value || "pending").replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
 const roles = [
   { id: "patient", title: "Patient", description: "Browse the test catalogue, place an order and follow its status.", icon: UserRound },
+  { id: "doctor", title: "Doctor", description: "Review and respond to patient appointment test requests.", icon: Stethoscope },
+  { id: "homecare", title: "Homecare provider", description: "Review and respond to homecare test requests.", icon: House },
   { id: "pharmacy", title: "Pharmacy", description: "Manage test stock, receive patient orders and prepare fulfilment.", icon: Pill },
   { id: "driver", title: "Driver", description: "View delivery-ready orders and update delivery progress.", icon: Truck },
   { id: "admin", title: "Admin", description: "Monitor test orders, payment attempts, stock and requests.", icon: ShieldCheck }
