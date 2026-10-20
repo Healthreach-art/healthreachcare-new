@@ -109,8 +109,8 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
     notes: String(notes || "").trim(),
     fulfilment,
     subtotal,
-    deliveryFee: fulfilment === "delivery" ? 35 : 0,
-    total: subtotal + (fulfilment === "delivery" ? 35 : 0),
+    deliveryFee: fulfilment === "delivery" ? SIMULATION_CONFIG.deliveryFee : 0,
+    total: subtotal + (fulfilment === "delivery" ? SIMULATION_CONFIG.deliveryFee : 0),
     status: "awaiting_payment",
     paymentStatus: "pending_gateway",
     paymentMethod: "",
@@ -185,9 +185,67 @@ export function transitionTestOrder(orderId, nextStatus) {
 }
 
 export function saveTestBooking(booking) {
-  const item = { ...booking, id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(), status: "awaiting_provider_review", paymentStatus: "not_started", testOnly: true, createdAt: new Date().toISOString() };
-  updateWorkflow(draft => { draft.bookings.unshift(item); return { value: item }; });
+  const now = new Date().toISOString();
+  const item = {
+    ...booking,
+    id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(),
+    status: "awaiting_provider_review",
+    paymentStatus: "not_started",
+    paymentId: null,
+    statusHistory: [{ status: "awaiting_provider_review", at: now, testOnly: true }],
+    testOnly: true,
+    createdAt: now,
+    updatedAt: now
+  };
+  const result = updateWorkflow(draft => {
+    if (draft.bookings.some(existing => existing.id === item.id)) return { error: "A request with this reference already exists." };
+    draft.bookings.unshift(item);
+    return { value: item };
+  });
+  if (result?.error) throw new Error(result.error);
   return item;
+}
+
+// Payment adapter seam: replace this implementation with a hosted gateway and
+// verified server webhook when production credentials and backend are configured.
+export function simulateTestBookingPayment(bookingId, method) {
+  let payment;
+  const result = updateWorkflow(draft => {
+    const booking = draft.bookings.find(item => item.id === bookingId && item.testOnly === true);
+    if (!booking) return { error: "Booking not found. Refresh Activities and try again." };
+    if (booking.status !== "accepted") return { error: "The provider must accept the request before payment." };
+    if (booking.paymentStatus === "test_authorized") {
+      return { value: draft.payments.find(item => item.bookingId === bookingId) || null };
+    }
+    const selectedMethod = SIMULATION_CONFIG.paymentMethods.find(item => item.id === method);
+    const amount = Number(booking.servicePrice ?? booking.consultationFee);
+    if (!selectedMethod) return { error: "Choose an available test payment method." };
+    if (!Number.isFinite(amount) || amount <= 0) return { error: "A valid service price is not configured, so checkout is unavailable." };
+    const now = new Date().toISOString();
+    payment = {
+      id: "TEST-PAY-" + Date.now().toString(36).toUpperCase(),
+      bookingId,
+      amount,
+      currency: SIMULATION_CONFIG.currency,
+      method: selectedMethod.id,
+      provider: selectedMethod.provider,
+      status: "test_authorized",
+      testOnly: true,
+      fundsMoved: false,
+      idempotencyKey: "booking-" + bookingId,
+      createdAt: now
+    };
+    draft.payments.unshift(payment);
+    booking.paymentMethod = selectedMethod.id;
+    booking.paymentId = payment.id;
+    booking.paymentStatus = "test_authorized";
+    booking.status = "confirmed";
+    booking.updatedAt = now;
+    booking.statusHistory = [...(booking.statusHistory || []), { status: "test_authorized", at: now, testOnly: true }, { status: "confirmed", at: now, testOnly: true }];
+    return { value: payment };
+  });
+  if (result?.error) throw new Error(result.error);
+  return payment || result?.value;
 }
 
 export function useTestWorkflow() {
