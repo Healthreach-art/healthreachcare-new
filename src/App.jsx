@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity, ArrowRight, Bell, CalendarDays, ChevronRight,
   HeartPulse, Home, MapPin, Pill, Moon, Sun,
@@ -10,6 +10,7 @@ import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
 import { useTestWorkflow } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
+import { canMessageBooking, canReviewBooking, createBookingMessage, createBookingReview, markNotificationRead, readCareJourney, recordCareEvent, toggleFavourite, writeCareJourney } from "./care-journey.js";
 
 
 const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
@@ -114,8 +115,9 @@ function App() {
     const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
   });
-  const [notifications, setNotifications] = useState([]);
-  const [notificationError] = useState("Testing mode: notifications are not connected.");
+  const [careJourney, setCareJourney] = useState(() => readCareJourney());
+  const [notifications, setNotifications] = useState(() => readCareJourney().notifications);
+  const [notificationError] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkBackground, setDarkBackground] = useState(false);
   const [notice, setNotice] = useState("");
@@ -129,6 +131,10 @@ function App() {
   const [supportNotice, setSupportNotice] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [activityFilter, setActivityFilter] = useState("all");
+  const [chatDraft, setChatDraft] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [journeyNotice, setJourneyNotice] = useState("");
   const workflow = useTestWorkflow();
   const activities = getActivityRecords(workflow);
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
