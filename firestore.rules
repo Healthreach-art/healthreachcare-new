@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role in ['admin', 'super_admin'];
+    }
+
+    function isAssignedProvider() {
+      return signedIn() && resource.data.assignedProviderId == request.auth.uid;
+    }
+
+    match /medicines/{medicineId} {
+      // Public catalogue documents must contain public-facing fields only.
+      allow get, list: if resource.data.publicCatalog == true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /doctors/{doctorId} {
+      // Public directory only exposes practitioners explicitly marked verified.
+      allow get, list: if resource.data.verified == true
+        || resource.data.isVerified == true
+        || resource.data.verificationStatus == 'verified';
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      // Notifications should be written by trusted server-side workflows.
+      allow write: if false;
+    }
+
+    match /user_roles/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /providerApplications/{applicationId} {
+      allow create: if signedIn()
+        && request.resource.data.applicantUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role in ['doctor', 'pharmacy', 'homecare']
+        && request.resource.data.keys().hasAll([
+          'applicantUid', 'applicantEmail', 'applicantName', 'role',
+          'organisationName', 'registrationNumber', 'location', 'phone',
+          'notes', 'status', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'applicantUid', 'applicantEmail', 'applicantName', 'role',
+          'organisationName', 'registrationNumber', 'location', 'phone',
+          'notes', 'status', 'createdAt', 'updatedAt'
+        ]);
+      allow get, list: if signedIn()
+        && (resource.data.applicantUid == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    match /serviceRequestMessages/{messageId} {
+      function parentRequest(requestId) {
+        return get(/databases/$(database)/documents/serviceRequests/$(requestId)).data;
+      }
+      function conversationOpen(requestId) {
+        return exists(/databases/$(database)/documents/serviceRequests/$(requestId))
+          && parentRequest(requestId).status in [
+            'accepted', 'confirmed', 'in_progress', 'awaiting_patient',
+            'preparing', 'ready_for_pickup', 'out_for_delivery'
+          ];
+      }
+      allow read: if signedIn()
+        && conversationOpen(resource.data.requestId)
+        && (resource.data.patientUid == request.auth.uid
+          || resource.data.providerUid == request.auth.uid)
+        && (parentRequest(resource.data.requestId).patientUid == request.auth.uid
+          || parentRequest(resource.data.requestId).assignedProviderId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll([
+          'requestId', 'patientUid', 'providerUid', 'senderUid', 'text', 'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'requestId', 'patientUid', 'providerUid', 'senderUid', 'text', 'createdAt'
+        ])
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && conversationOpen(request.resource.data.requestId)
+        && parentRequest(request.resource.data.requestId).patientUid == request.resource.data.patientUid
+        && parentRequest(request.resource.data.requestId).assignedProviderId == request.resource.data.providerUid
+        && request.auth.uid in [
+          request.resource.data.patientUid, request.resource.data.providerUid
+        ];
+      allow update, delete: if false;
+    }
+
+    match /payments/{paymentId} {
+      // Payment status must only be written by a trusted server after gateway verification.
+      allow read: if signedIn()
+        && (resource.data.patientUid == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    match /serviceRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.patientUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.serviceType in ['appointment', 'homecare', 'prescription', 'medicine']
+        && request.resource.data.keys().hasAll([
+          'serviceType', 'status', 'patientUid', 'patientName',
+          'patientEmail', 'phone', 'location', 'details', 'privacyNoticeVersion', 'consentAt', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'serviceType', 'status', 'patientUid', 'patientName',
+          'patientEmail', 'phone', 'location', 'details',
+          'privacyNoticeVersion', 'consentAt', 'createdAt', 'updatedAt',
+          'items', 'pharmacyId', 'pharmacyName', 'orderAmount', 'currency', 'orderStage'
+        ])
+        && (request.resource.data.serviceType != 'medicine'
+          || (request.resource.data.items is list
+            && request.resource.data.items.size() > 0
+            && request.resource.data.items.size() <= 20
+            && request.resource.data.pharmacyId is string
+            && request.resource.data.orderAmount is number
+            && request.resource.data.orderAmount >= 0
+            && request.resource.data.currency == 'ZAR'
+            && request.resource.data.orderStage == 'awaiting_pharmacy_confirmation'));
+
+      allow get, list: if signedIn()
+        && (resource.data.patientUid == request.auth.uid || isAssignedProvider() || isAdmin());
+
+      // Providers can update only requests explicitly assigned to their own UID.
+      // Assignment and financial changes must be performed by a trusted admin/server workflow.
+      allow update: if isAdmin()
+        || (isAssignedProvider()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'updatedAt', 'providerNotes'])
+          && (
+            (resource.data.serviceType == 'appointment'
+              && ((resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'confirmed', 'rejected'])
+                || (resource.data.status == 'accepted' && request.resource.data.status in ['confirmed', 'rejected'])
+                || (resource.data.status == 'confirmed' && request.resource.data.status in ['awaiting_patient', 'completed', 'rejected'])
+                || (resource.data.status == 'awaiting_patient' && request.resource.data.status in ['confirmed', 'completed'])))
+            || (resource.data.serviceType in ['medicine', 'prescription']
+              && ((resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'rejected'])
+                || (resource.data.status == 'accepted' && request.resource.data.status in ['preparing', 'rejected'])
+                || (resource.data.status == 'preparing' && request.resource.data.status in ['ready_for_pickup', 'out_for_delivery'])
+                || (resource.data.status == 'ready_for_pickup' && request.resource.data.status in ['out_for_delivery', 'completed'])
+                || (resource.data.status == 'out_for_delivery' && request.resource.data.status == 'completed')))
+            || (resource.data.serviceType == 'homecare'
+              && ((resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'rejected'])
+                || (resource.data.status == 'accepted' && request.resource.data.status in ['confirmed', 'in_progress', 'rejected'])
+                || (resource.data.status == 'confirmed' && request.resource.data.status in ['in_progress', 'rejected'])
+                || (resource.data.status == 'in_progress' && request.resource.data.status == 'completed')))
+          ));
+
+      allow delete: if isAdmin();
+    }
+
+    // Default deny: patient records and other collections require explicit rules.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
