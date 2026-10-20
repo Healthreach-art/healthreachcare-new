@@ -4,6 +4,7 @@ import {
   appendStatusHistory,
   canMessageBooking,
   canReviewBooking,
+  configuredHomecareFee,
   configuredHomecarePrice,
   createBookingMessage,
   createBookingReview,
@@ -22,10 +23,15 @@ class MemoryStorage {
 
 test("homecare prices must be explicitly configured and positive", () => {
   assert.equal(configuredHomecarePrice("personal_care", {}), null);
-  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE: "0" }), null);
-  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE: "not-a-price" }), null);
-  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE: "499.995" }), 500);
-  assert.equal(configuredHomecarePrice("unknown", { VITE_HOMECARE_PRICE_PERSONAL_CARE: "100" }), null);
+  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE_2H: "0" }), null);
+  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE_2H: "not-a-price" }), null);
+  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE_2H: "499.995" }), 500);
+  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE_8H: "999" }, "8"), 999);
+  assert.equal(configuredHomecarePrice("personal_care", { VITE_HOMECARE_PRICE_PERSONAL_CARE_2H: "100" }, "3"), null);
+  assert.equal(configuredHomecarePrice("unknown", { VITE_HOMECARE_PRICE_PERSONAL_CARE_2H: "100" }), null);
+  assert.equal(configuredHomecareFee("service", {}), null);
+  assert.equal(configuredHomecareFee("service", { VITE_HOMECARE_SERVICE_FEE: "0" }), 0);
+  assert.equal(configuredHomecareFee("travel", { VITE_HOMECARE_TRAVEL_FEE: "25" }), 25);
 });
 
 test("chat requires an active booking and an assigned provider", () => {
