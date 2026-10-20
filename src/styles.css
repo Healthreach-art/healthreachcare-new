@@ -258,3 +258,20 @@ main{flex:1}.page-content{max-width:1180px;width:calc(100% - 56px);margin:0 auto
 .recent-activity-button>svg{flex-shrink:0;color:var(--muted)}
 @keyframes trackerPulse{0%,100%{box-shadow:0 0 0 3px #087f6212}50%{box-shadow:0 0 0 6px #087f6222}}
 @media(max-width:600px){.tracker-latest-card{padding:14px}.tracker-topline{flex-direction:column}.tracker-timeline{margin-right:-4px}.activity-card{gap:9px;align-items:flex-start}.activity-card-icon{width:36px;height:36px}.activity-card .activity-status{display:none}.activity-filter{padding:8px 11px}.detail-timeline .tracker-stage{min-width:78px;flex-basis:28%}}
+
+
+/* Connected booking + simulated checkout states */
+.activity-payment-panel{display:grid;gap:13px;margin:17px 0;padding:17px;border:1px solid #cfe6da;border-radius:15px;background:#f5fbf7}
+.activity-payment-panel .eyebrow{color:#16765a;font-size:10px;font-weight:800;letter-spacing:.8px}
+.activity-payment-panel h3{margin:0;color:#183e30;font-size:17px}
+.activity-payment-panel>p{margin:0;color:#63796e;font-size:12px;line-height:1.65}
+.activity-payment-panel>label{display:grid;gap:7px;color:#49665a;font-size:11px;font-weight:750}
+.activity-payment-panel select{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d8e7df;border-radius:10px;background:#fff;color:#23473a;font:inherit}
+.activity-payment-panel>small{color:#71857b;font-size:10px;line-height:1.65}
+.activity-payment-amount{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border-radius:11px;background:#fff;border:1px solid #e1eee7}
+.activity-payment-amount span{font-size:11px;color:#6d8277}.activity-payment-amount strong{font-size:20px;color:#0b7656}
+.provider-toolbar-actions{display:flex;align-items:center;gap:8px}
+.provider-status-history{margin-top:14px;padding-top:12px;border-top:1px solid #e4ece7}
+.provider-status-history summary{cursor:pointer;color:#526c60;font-size:11px;font-weight:750}
+.provider-status-history p{display:flex;justify-content:space-between;gap:12px;color:#71817a;font-size:10px}
+@media(max-width:600px){.activity-payment-panel{padding:13px}.provider-toolbar-actions{width:100%;flex-wrap:wrap}.provider-toolbar-actions select{flex:1;min-width:130px}}
