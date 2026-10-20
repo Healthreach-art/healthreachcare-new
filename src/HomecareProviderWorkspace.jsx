@@ -26,6 +26,8 @@ export default function HomecareProviderWorkspace() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
 
   useEffect(() => {
     const refresh = () => {
@@ -40,6 +42,8 @@ export default function HomecareProviderWorkspace() {
       window.removeEventListener("healthreachcare-test-bookings-updated", refresh);
     };
   }, []);
+
+  useEffect(() => { if (selected) { setScheduleDate(selected.scheduledDate || selected.requestedDate || ""); setScheduleTime(selected.scheduledTime || selected.requestedTime || ""); } }, [selectedId]);
 
   const homecareRequests = requests.filter(item => item.kind === "homecare");
   const selected = homecareRequests.find(item => item.id === selectedId) || null;
@@ -111,6 +115,19 @@ export default function HomecareProviderWorkspace() {
     setNotice(caregiver.fullName + " assigned to this booking. The patient can see the saved assignment in Activities in this browser preview.");
     setError("");
   };
+  const confirmSchedule = item => {
+    if (!scheduleDate || !scheduleTime) { setError("Choose a valid visit date and time before confirming the schedule."); return; }
+    const parsed = new Date(scheduleDate + "T" + scheduleTime);
+    if (Number.isNaN(parsed.getTime()) || parsed.getTime() < Date.now()) { setError("Choose a valid future visit date and time."); return; }
+    const current = readJson(REQUESTS_KEY, []);
+    const index = current.findIndex(row => row.id === item.id && row.kind === "homecare");
+    if (index < 0) { setError("Booking not found."); return; }
+    if (!current[index].assignedCaregiver) { setError("Assign a caregiver before confirming the schedule."); return; }
+    current[index] = { ...current[index], scheduledDate: scheduleDate, scheduledTime: scheduleTime, status: "scheduled", requestStatus: "scheduled", updatedAt: new Date().toISOString() };
+    persistRequests(current);
+    setNotice("Visit schedule confirmed for " + scheduleDate + " at " + scheduleTime + ". The patient can see the updated schedule in Activities in this browser preview.");
+    setError("");
+  };
   const sendMessage = event => {
     event.preventDefault();
     if (!selected || !text(chatText)) return;
@@ -164,7 +181,7 @@ export default function HomecareProviderWorkspace() {
         <div className="hc-detail-grid"><div><small>Patient</small><strong>{selected.patientName||"Name unavailable"}</strong></div><div><small>Phone</small><strong>{selected.patientPhone||"Not provided"}</strong></div><div><small>Requested date</small><strong>{safeDate(selected.requestedDate ? selected.requestedDate+"T"+(selected.requestedTime||"00:00") : "")}</strong></div><div><small>Duration</small><strong>{selected.duration||"Not specified"}</strong></div><div className="wide"><small>Service address</small><strong>{selected.location||"Not provided"}</strong></div><div className="wide"><small>Additional details</small><strong>{selected.details||"No additional details"}</strong></div></div>
         <div className="hc-payment-row"><span><CreditCard size={17}/> Payment status</span><strong>{selected.paymentStatus||"not started"} · {selected.paidAmount ? "R"+Number(selected.paidAmount).toFixed(2) : "No amount recorded"}</strong></div>
         {["pending","requested","awaiting_provider_review"].includes(String(selected.status||selected.requestStatus||"").toLowerCase())&&<div className="hc-action-row"><button className="hc-primary" onClick={()=>changeStatus(selected,"accepted")}><CheckCircle2 size={16}/> Accept booking</button><button className="hc-secondary" onClick={()=>changeStatus(selected,"declined")}><XCircle size={16}/> Decline</button></div>}
-        {["accepted","assigned","scheduled"].includes(String(selected.status||"").toLowerCase())&&<div className="hc-assign"><h4>Assign a caregiver</h4><p>Choose a team member. Their name, picture, qualifications and experience are saved with the booking.</p><select value={selected.assignedCaregiver?.id||""} onChange={e=>assignMember(selected,e.target.value)}><option value="">Select approved team member</option>{team.filter(person=>person.availability!=="Unavailable").map(person=><option key={person.id} value={person.id}>{person.fullName} · {person.role}</option>)}</select>{selected.assignedCaregiver&&<div className="hc-caregiver-card">{selected.assignedCaregiver.photoUrl?<img src={selected.assignedCaregiver.photoUrl} alt={selected.assignedCaregiver.fullName}/>:<span className="hc-avatar"><UserRound size={24}/></span>}<div><strong>{selected.assignedCaregiver.fullName}</strong><p>{selected.assignedCaregiver.role}</p><small>{selected.assignedCaregiver.qualifications} · {selected.assignedCaregiver.experience}</small></div></div>}</div>}
+        {["accepted","assigned","scheduled"].includes(String(selected.status||"").toLowerCase())&&<div className="hc-assign"><h4>Assign a caregiver</h4><p>Choose a team member. Their name, picture, qualifications and experience are saved with the booking.</p><select value={selected.assignedCaregiver?.id||""} onChange={e=>assignMember(selected,e.target.value)}><option value="">Select approved team member</option>{team.filter(person=>person.availability!=="Unavailable").map(person=><option key={person.id} value={person.id}>{person.fullName} · {person.role}</option>)}</select>{selected.assignedCaregiver&&<div className="hc-caregiver-card">{selected.assignedCaregiver.photoUrl?<img src={selected.assignedCaregiver.photoUrl} alt={selected.assignedCaregiver.fullName}/>:<span className="hc-avatar"><UserRound size={24}/></span>}<div><strong>{selected.assignedCaregiver.fullName}</strong><p>{selected.assignedCaregiver.role}</p><small>{selected.assignedCaregiver.qualifications} · {selected.assignedCaregiver.experience}</small></div></div>}<h4 className="hc-schedule-title">Confirm visit schedule</h4><div className="hc-schedule-fields"><label>Date<input type="date" min={new Date().toISOString().slice(0,10)} value={scheduleDate} onChange={e=>setScheduleDate(e.target.value)}/></label><label>Time<input type="time" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)}/></label></div><button className="hc-primary" type="button" onClick={()=>confirmSchedule(selected)} disabled={!selected.assignedCaregiver}><CalendarDays size={16}/> Confirm schedule</button></div>}
         <div className="hc-chat"><h4><MessageCircle size={17}/> Booking conversation</h4><p>Use this thread to coordinate with the patient in the same browser preview.</p><div className="hc-messages">{(selected.messages||[]).map(message=><div key={message.id} className={"hc-message "+(message.sender==="provider"?"outgoing":"incoming")}><span>{message.sender==="provider"?"Provider":"Patient"}</span><p>{message.text}</p><small>{safeDate(message.createdAt)}</small></div>)}{!(selected.messages||[]).length&&<span className="hc-muted">No messages yet.</span>}</div><form onSubmit={sendMessage}><input value={chatText} onChange={e=>setChatText(e.target.value)} maxLength={1000} placeholder="Write a booking message…" aria-label="Booking message"/><button className="hc-primary" type="submit" disabled={!text(chatText)}>Send</button></form></div>
       </> : <div className="hc-empty"><CalendarDays size={25}/><strong>Select a booking</strong><p>Choose a booking to review its details and take action.</p></div>}</div></div>
     </section>}
