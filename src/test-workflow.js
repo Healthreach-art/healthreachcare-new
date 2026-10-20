@@ -30,7 +30,7 @@ export const TEST_PRODUCTS = [
   { id: "test-thermometer", name: "Digital thermometer", category: "Health equipment test item", description: "Illustrative catalogue item for interface testing only.", price: 89, stock: 10, prescriptionRequired: false, active: true }
 ];
 
-const freshState = () => ({ version: 1, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], updatedAt: new Date().toISOString() });
+const freshState = () => ({ version: 1, inventory: TEST_PRODUCTS.map(item => ({ ...item })), orders: [], payments: [], bookings: [], prescriptions: [], updatedAt: new Date().toISOString() });
 
 export function readWorkflow() {
   if (typeof window === "undefined") return freshState();
@@ -53,7 +53,8 @@ export function readWorkflow() {
       })(),
       orders: Array.isArray(parsed.orders) ? parsed.orders : [],
       payments: Array.isArray(parsed.payments) ? parsed.payments : [],
-      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : []
+      bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
+      prescriptions: Array.isArray(parsed.prescriptions) ? parsed.prescriptions : []
     };
   } catch { return freshState(); }
 }
@@ -75,7 +76,8 @@ export function updateWorkflow(mutator) {
     inventory: current.inventory.map(item => ({ ...item })),
     orders: current.orders.map(item => ({ ...item, items: Array.isArray(item.items) ? item.items.map(line => ({ ...line })) : [] })),
     payments: current.payments.map(item => ({ ...item })),
-    bookings: current.bookings.map(item => ({ ...item }))
+    bookings: current.bookings.map(item => ({ ...item })),
+    prescriptions: (current.prescriptions || []).map(item => ({ ...item }))
   };
   const result = mutator(draft);
   if (result?.error) return result;
@@ -204,6 +206,50 @@ export function saveTestBooking(booking) {
   });
   if (result?.error) throw new Error(result.error);
   return item;
+}
+
+// Sandbox prescription intake stores metadata only; no file bytes or medical document
+// are uploaded or persisted. Replace this with private object storage and pharmacy ACLs.
+export function saveTestPrescription({ patientName, fileName, fileType, fileSize, notes = "" }) {
+  const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+  if (!String(patientName || "").trim()) throw new Error("Enter the sandbox patient name.");
+  if (!String(fileName || "").trim()) throw new Error("Choose a sample file to simulate intake.");
+  if (!allowedTypes.includes(fileType)) throw new Error("Use a PDF, JPG or PNG sample file.");
+  if (!Number.isFinite(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 5 * 1024 * 1024) throw new Error("The sample file must be smaller than 5 MB.");
+  const now = new Date().toISOString();
+  const item = {
+    id: "TEST-RX-" + Date.now().toString(36).toUpperCase(),
+    patientName: String(patientName).trim().slice(0,100),
+    fileName: String(fileName).split(/[\\/]/).pop().slice(0,160),
+    fileType,
+    fileSize: Number(fileSize),
+    notes: String(notes || "").trim().slice(0,500),
+    status: "awaiting_pharmacy_review",
+    reviewStatus: "awaiting_pharmacy_review",
+    createdAt: now,
+    updatedAt: now,
+    testOnly: true,
+    fileStored: false,
+    fileUploaded: false
+  };
+  const result = updateWorkflow(draft => { draft.prescriptions.unshift(item); return { value: item }; });
+  if (result?.error) throw new Error(result.error);
+  return item;
+}
+
+export function transitionTestPrescription(prescriptionId, nextStatus, reviewNote = "") {
+  const allowed = { awaiting_pharmacy_review: ["approved_for_test", "needs_information", "rejected"], needs_information: ["awaiting_pharmacy_review", "rejected"], approved_for_test: [], rejected: [] };
+  return updateWorkflow(draft => {
+    const item = (draft.prescriptions || []).find(entry => entry.id === prescriptionId && entry.testOnly === true);
+    if (!item) return { error: "Sandbox prescription request not found." };
+    if (!(allowed[item.status] || []).includes(nextStatus)) return { error: "This prescription review transition is not allowed." };
+    item.status = nextStatus;
+    item.reviewStatus = nextStatus;
+    item.reviewNote = String(reviewNote || "").trim().slice(0,500);
+    item.reviewedAt = new Date().toISOString();
+    item.updatedAt = item.reviewedAt;
+    return { value: item };
+  });
 }
 
 // Payment adapter seam: replace this implementation with a hosted gateway and
