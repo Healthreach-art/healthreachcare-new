@@ -65,124 +65,17 @@ main{flex:1}.page-content{max-width:1180px;width:calc(100% - 56px);margin:0 auto
 .dark-background .theme-toggle{background:#eaf7f0;color:#087f62;border-color:#b9dece}
 @media(max-width:600px){.app-shell{background:linear-gradient(180deg,#eaf6ef 0%,#f7faf9 370px)}.dark-background{background:#18392e!important}}
 
-/* Dark background theme: replace the remaining white shell surfaces with deep green.
-   Keep the existing service-card accent colours so cards remain easy to distinguish. */
-.dark-background {
-  --ink: #e5f5ee;
-  --muted: #a7c4b8;
-  --border: #2c5a4b;
-  --mint: #214f40;
-  --white: #173d30;
-  --blue: #203f4c;
-  --shadow: 0 8px 28px rgba(0, 0, 0, .16);
-  color: var(--ink);
-  background: #102f25 !important;
-}
-.dark-background .topbar,
-.dark-background .bottom-nav,
-.dark-background .panel,
-.dark-background .dashboard-panel,
-.dark-background .trust-grid > div,
-.dark-background .directory-tools,
-.dark-background .doctor-card,
-.dark-background .provider-stat,
-.dark-background .provider-request-card,
-.dark-background .notification-popover,
-.dark-background .request-modal {
-  background: #173d30;
-  color: var(--ink);
-  border-color: var(--border);
-}
-.dark-background .topbar { border-bottom-color: var(--border); }
-.dark-background .brand strong,
-.dark-background .profile-button,
-.dark-background .section-heading h2,
-.dark-background .page-content > h1,
-.dark-background .panel h2,
-.dark-background .panel-heading h2,
-.dark-background .dashboard-panel-heading h2,
-.dark-background .dashboard-empty strong,
-.dark-background .doctor-card h3,
-.dark-background .provider-request-head h3,
-.dark-background .provider-request-details p strong,
-.dark-background .empty-state h3,
-.dark-background .modal-head h2,
-.dark-background .notification-item strong,
-.dark-background .popover-head strong {
-  color: #e5f5ee;
-}
-.dark-background .icon-button,
-.dark-background .mobile-menu,
-.dark-background .navigation-popover,
-.dark-background .navigation-option,
-.dark-background .provider-entry,
-.dark-background .provider-toolbar select,
-.dark-background .filter-row select,
-.dark-background .request-modal input,
-.dark-background .request-modal select,
-.dark-background .request-modal textarea,
-.dark-background .search-field,
-.dark-background .search-field input {
-  background: #214f40;
-  color: #e5f5ee;
-  border-color: #386b58;
-}
-.dark-background .navigation-option:hover,
-.dark-background .navigation-option.active {
-  background: #2b624f;
-  color: #ffffff;
-}
-.dark-background .profile-circle,
-.dark-background .account-avatar,
-.dark-background .panel-icon,
-.dark-background .provider-stat > span {
-  background: #285a48;
-  color: #bcebd8;
-}
-.dark-background .inline-message,
-.dark-background .dashboard-empty,
-.dark-background .provider-security-note,
-.dark-background .tracker-map-placeholder {
-  background: #1d4939;
-  border-color: #356650;
-  color: #c3ded2;
-}
-.dark-background .tracker-map-placeholder strong,
-.dark-background .empty-state h3 {
-  color: #e5f5ee;
-}
-.dark-background .notification-item,
-.dark-background .popover-notice,
-.dark-background .provider-request-details {
-  border-color: var(--border);
-}
-.dark-background .bottom-nav { box-shadow: 0 -5px 20px rgba(0, 0, 0, .18); }
-.dark-background .nav-item { color: #9bbcaf; }
-.dark-background .nav-item.active { color: #a7f0d4; }
-.dark-background .theme-toggle {
-  background: #285a48;
-  color: #d5f7e8;
-  border-color: #477c68;
-}
-.dark-background .service-card:nth-child(1) { background: linear-gradient(145deg, #214b3c 55%, #285d48); }
-.dark-background .service-card:nth-child(2) { background: linear-gradient(145deg, #233f4a 55%, #2c5260); }
-.dark-background .service-card:nth-child(3) { background: linear-gradient(145deg, #3b3153 55%, #51416e); }
-.dark-background .service-card:nth-child(4) { background: linear-gradient(145deg, #4c402a 55%, #665331); }
-.dark-background .service-card,
-.dark-background .service-card strong,
-.dark-background .service-card > span:not(.service-icon) {
-  color: #f0faf5;
-  border-color: #47715f;
-}
-.dark-background .service-arrow { color: #c4e2d4; }
-.dark-background .service-icon.green { background: #2b624f; color: #b8f2d9; }
-.dark-background .service-icon.blue { background: #2d5368; color: #c4e4ff; }
-.dark-background .service-icon.lilac { background: #55446e; color: #e5d7ff; }
-.dark-background .service-icon.amber { background: #6a542d; color: #ffe5a8; }
-.dark-background .request-status.status-accepted { background: #285a48; color: #c5f4df; }
-.dark-background .request-status.status-declined { background: #603b36; color: #ffd1c7; }
-.dark-background .notice { background: #514323; border-color: #79653a; color: #ffedbd; }
-.dark-background .state-card { background: #173d30; border-color: var(--border); }
-.dark-background .state-error { background: #4c3028; border-color: #805044; color: #ffd1c7; }
-.dark-background .site-footer { border-color: var(--border); }
 
+/* Patient scrolling fix: allow the document to grow and keep content clear of the fixed mobile nav. */
+html, body, #root { min-height: 100%; }
+html { height: auto; overflow-y: auto; }
+body { height: auto; overflow-x: hidden; overflow-y: auto; }
+#root { height: auto; }
+.app-shell { min-height: 100vh; min-height: 100dvh; height: auto; overflow: visible; }
+.app-shell > main { min-height: 0; flex: 1 0 auto; overflow: visible; }
+.page-content { min-height: 0; }
+@media (max-width: 600px) {
+  .page-content { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+  .bottom-nav { height: calc(67px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+  .site-footer { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+}
