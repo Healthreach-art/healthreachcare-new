@@ -242,7 +242,7 @@ function App() {
         setNotice("Prescription enquiry " + saved.id + " saved to the admin review queue in this browser. No prescription file was uploaded and no medicine was approved.");
       } else {
         const homecare = formType === "homecare";
-        const durationHours = homecare ? (Number.parseInt(form.duration, 10) || 2) : 0;
+        const durationHours = homecare ? (form.duration === "Overnight" ? 8 : form.duration === "Ongoing / to be discussed" ? 2 : Number.parseInt(form.duration, 10) || 2) : 0;
         const serviceKey = ({ "Nursing care":"specialised_care", "Personal care":"personal_care", "Post-operative care":"post_surgery", "Elder care":"elderly_care", "Wound care":"specialised_care", "Other":"specialised_care" })[form.service];
         const price = homecare
           ? Number(SIMULATION_CONFIG.homecareHourlyRates[serviceKey] || SIMULATION_CONFIG.homecareHourlyRates.specialised_care) * durationHours
@@ -251,7 +251,7 @@ function App() {
           kind: homecare ? "homecare" : "appointment",
           type: homecare ? "homecare" : "appointment",
           providerId: homecare ? "demo-homecare-provider" : "demo-doctor-provider",
-          providerName: homecare ? "Central homecare coordination (sandbox)" : (form.doctorName || "Unassigned test practitioner"),
+          providerName: homecare ? "Central homecare coordination (sandbox)" : (form.doctorName || "Unassigned test practitioner queue"),
           patientName: form.name.trim(),
           patientPhone: form.phone.trim(),
           patientUid: "local-sandbox-patient",
