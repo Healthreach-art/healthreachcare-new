@@ -5,7 +5,8 @@
 import { readWorkflow, updateWorkflow, WORKFLOW_KEY } from "../test-workflow.js";
 export const DRIVER_DEMO_VERSION = 1;
 const marker = "driverDeliveryDemoVersion";
-const isDemo = o => o?.testOnly === true && o?.[marker] === DRIVER_DEMO_VERSION;
+// Driver sees the same synthetic patient delivery orders that Pharmacy processes.
+const isDemo = o => o?.testOnly === true && o?.fulfilment === "delivery" && o?.status !== "cancelled";
 const at = () => new Date().toISOString();
 const result = (value, error) => error ? { ok:false, error } : { ok:true, value };
 const clone = o => o ? { ...o, items:(o.items||[]).map(x=>({...x})), statusHistory:[...(o.statusHistory||[])] } : null;
@@ -32,17 +33,14 @@ function makeSeed(draft) {
   draft.payments.unshift({id:paymentId,orderId:id,amount:47,currency:"ZAR",method:"simulated-demo-payment",provider:"driver-demo-adapter",status:"test_authorized",type:"payment",testOnly:true,fundsMoved:false,createdAt:time,updatedAt:time});
   return order;
 }
+// Do not manufacture a courier order. Patient checkout is the only source of orders.
 export function ensureDemoDelivery() {
-  const existing=readWorkflow().orders.find(isDemo);
-  if(existing) return {created:false,order:existing};
-  const r=updateWorkflow(d=>({value:d.orders.find(isDemo)||makeSeed(d)}));
-  if(r?.error) throw new Error(r.error);
-  return {created:true,order:r.value};
+  return {created:false,order:null};
 }
 /** Reset only driver-demo records; preserve all unrelated test work and inventory. */
 export function resetDemoData() {
   const r=updateWorkflow(d=>{
-    const demoOrders=d.orders.filter(isDemo);
+    const demoOrders=d.orders.filter(o=>o?.testOnly === true && o?.[marker] === DRIVER_DEMO_VERSION);
     const ids=new Set(demoOrders.map(o=>o.id));
     for(const order of demoOrders){
       if(order.stockDeducted&&!order.stockRestocked){
@@ -57,7 +55,7 @@ export function resetDemoData() {
   return r.value;
 }
 export async function listAvailableDeliveries() {
-  return readWorkflow().orders.filter(o=>isDemo(o)&&o.fulfilment==="delivery"&&o.status==="ready_for_delivery"&&!o.driverId).map(clone);
+  return readWorkflow().orders.filter(o=>isDemo(o)&&o.status==="ready_for_delivery"&&!o.driverId).map(clone);
 }
 export async function getDelivery(orderId) { return clone(readWorkflow().orders.find(o=>isDemo(o)&&o.id===orderId)); }
 /** Best-effort local claim. Production must use an atomic server-side conditional update. */
