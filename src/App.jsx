@@ -1,7 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { auth, db, firebaseConfigured } from "./firebase";
+import { useMemo, useState } from "react";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CheckCircle2, ChevronRight,
   ClipboardList, Clock3, HeartPulse, Home, MapPin, Pill, Search,
@@ -24,19 +21,12 @@ function Brand() {
 
 function App() {
   const [page, setPage] = useState("home");
-  const [user, setUser] = useState(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authName, setAuthName] = useState("");
-  const [authMode, setAuthMode] = useState("signin");
-  const [authError, setAuthError] = useState("");
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authNotice, setAuthNotice] = useState("");
+  const [user] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationError] = useState("Testing mode: notifications are not connected.");
-  const [doctors] = useState(sampleDoctors);
-  const [doctorState, setDoctorState] = useState("ready");
-  const [doctorError, setDoctorError] = useState("");
+  const [doctors] = useState([]);
+  const [doctorState] = useState("config");
+  const [doctorError] = useState("The provider data adapter is not connected yet. The interface is prepared for a future backend; no sample doctors are shown.");
   const [doctorSearch, setDoctorSearch] = useState("");
   const [specialty, setSpecialty] = useState("All specialties");
   const [mode, setMode] = useState("All modes");
@@ -79,25 +69,8 @@ function App() {
 
   const submitForm = event => {
     event.preventDefault();
-    if (submittingRequest) return;
-    setSubmittingRequest(true);
-    const request = {
-      id: "TEST-" + Date.now().toString(36).toUpperCase(),
-      type: formType,
-      patientName: form.name.trim(),
-      phone: form.phone.trim(),
-      location: form.location.trim(),
-      details: form.details.trim(),
-      status: "TEST ONLY — saved locally, not sent",
-      paymentStatus: "Not collected",
-      createdAt: new Date().toISOString()
-    };
-    try {
-      const current = JSON.parse(localStorage.getItem("healthreachcare-test-bookings") || "[]");
-      localStorage.setItem("healthreachcare-test-bookings", JSON.stringify([request, ...current]));
-    } catch { /* The testing flow still works if browser storage is blocked. */ }
+    setNotice("This request form is a UI preview only. No account, booking, prescription, provider notification or payment service is connected, so nothing was submitted.");
     setFormType("");
-    setNotice("Test enquiry saved in this browser only. It was not sent to a provider and no payment was taken.");
     setSubmittingRequest(false);
   };
 
@@ -200,22 +173,10 @@ function App() {
   const renderMedicines = () => <section className="page-content"><div className="eyebrow">PHARMACY SERVICES</div><h1>Order medication</h1><p className="lead">Find medication through participating pharmacies.</p><div className="panel"><div className="panel-heading"><div className="panel-icon blue"><Pill/></div><div><h2>Medicine catalogue</h2><p>Live pharmacy inventory will appear here when connected.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>Testing mode is active. Live pharmacy stock is not connected; no invented products or prices are shown.</span></div><button className="button button-primary" onClick={()=>openForm("prescription")}>Submit a prescription enquiry <ArrowRight size={16}/></button></div></section>;
 
   const renderAccount = () => <section className="page-content">
-    <div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Sign in to manage your bookings and requests securely.</p>
-    <div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>{user?.displayName || "Welcome to HealthReachCare"}</h2><p className="muted">{user?.email || "Sign in or create an account to continue."}</p></div><span className="account-status"><span className={user ? "status-dot" : "status-dot status-muted"}/>{user ? "Signed in" : "Guest"}</span></div>
-    {authNotice && <div className="inline-message"><CheckCircle2 size={18}/><span>{authNotice}</span></div>}
-    {authError && <div className="state-card state-error"><AlertCircle size={20}/><div><strong>Account action failed</strong><p>{authError}</p></div></div>}
-    {!user && <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>{authMode === "signup" ? "Create your account" : "Sign in"}</h2><p>Bookings are linked to your authenticated account.</p></div></div>
-      {!firebaseConfigured && <div className="inline-message"><AlertCircle size={18}/><span>Firebase configuration is missing. Add the VITE_FIREBASE_API_KEY, AUTH_DOMAIN, PROJECT_ID, STORAGE_BUCKET, MESSAGING_SENDER_ID and APP_ID settings.</span></div>}
-      <form onSubmit={handleAuth} className="auth-form">
-        {authMode === "signup" && <label>Full name<input autoComplete="name" required value={authName} onChange={e=>setAuthName(e.target.value)} placeholder="Your full name"/></label>}
-        <label>Email address<input type="email" autoComplete="email" required value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="you@example.com"/></label>
-        <label>Password<input type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={6} required value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label>
-        <button className="button button-primary full" type="submit" disabled={authBusy || !firebaseConfigured}>{authBusy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button>
-      </form>
-      <button className="text-button" onClick={()=>{setAuthMode(authMode === "signup" ? "signin" : "signup");setAuthError("");}}>{authMode === "signup" ? "Already have an account? Sign in" : "New to HealthReachCare? Create an account"}</button>
-    </div>}
-    {user && <div className="panel"><h2>Your account is connected</h2><p className="muted">Use your account to submit booking requests. Provider acceptance, availability reservation and secure payment still require the trusted backend workflow.</p><button className="button button-outline" onClick={handleSignOut}>Sign out</button></div>}
-    <div className="panel"><h2>Need help?</h2><p className="muted">Contact HealthReachCare support for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured by the HealthReachCare team.")}><MessageCircle size={17}/> Contact support</button></div>
+    <div className="eyebrow">YOUR ACCOUNT</div><h1>Account</h1><p className="lead">Your HealthReachCare account connection will be added when the backend is selected.</p>
+    <div className="panel account-panel"><div className="account-avatar"><UserRound size={28}/></div><div><h2>Account setup pending</h2><p className="muted">No authentication provider is installed or connected in this repository.</p></div><span className="account-status"><span className="status-dot status-muted"/>Not connected</span></div>
+    <div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Ready for a future backend</h2><p>The UI is kept separate from the authentication and data-service layer so a backend can be added later without rebuilding the screens.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>No account is created, no personal information is stored, and no request or payment can be submitted from this preview.</span></div></div>
+    <div className="panel"><h2>Need help?</h2><p className="muted">Contact HealthReachCare support for help with appointments, medicine orders or home care.</p><button className="button button-outline" onClick={()=>setNotice("Support contact details need to be configured.")}><MessageCircle size={17}/> Contact support</button></div>
   </section>;
 
   return <div className="app-shell">
