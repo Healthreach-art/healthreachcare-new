@@ -35,7 +35,8 @@ export default function PharmacyWorkspace({ onBack }) {
     const haystack = [order.id, order.patientName, order.address, ...(order.items || []).map(line => line.name)].join(" ").toLowerCase();
     return matchesFilter && haystack.includes(search.trim().toLowerCase());
   }).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-  const prescriptions = (workflow.prescriptions || []).filter(item => item.testOnly === true);\n  const pendingPrescriptions = prescriptions.filter(item => ["awaiting_pharmacy_review", "pending", "awaiting_review", "submitted", "needs_information"].includes(item.status));
+  const prescriptions = (workflow.prescriptions || []).filter(item => item.testOnly === true);
+  const pendingPrescriptions = prescriptions.filter(item => ["awaiting_pharmacy_review", "pending", "awaiting_review", "submitted", "needs_information"].includes(item.status));
   const payments = (workflow.payments || []).filter(item => item.testOnly === true);
 
   const act = (order, status) => {
