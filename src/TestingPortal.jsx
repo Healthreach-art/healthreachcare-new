@@ -2,13 +2,15 @@ import { useMemo, useState } from "react";
 import {
   Activity, ArrowLeft, ArrowRight, CheckCircle2, ClipboardList, CreditCard,
   HeartPulse, House, Package, Pill, ShieldCheck, ShoppingBag, Stethoscope,
-  Truck, UserRound, Users, Wallet, RefreshCw, AlertCircle, Clock3, MapPin
+  Truck, UserRound, Users, Wallet, RefreshCw, AlertCircle, Clock3, MapPin,
+  Search, ShoppingCart, X
 } from "lucide-react";
 import {
   createTestOrder, readWorkflow, recordTestPayment, transitionTestBooking, transitionTestOrder,
   updateWorkflow, useTestWorkflow
 } from "./test-workflow.js";
 import "./TestingPortal.css";
+import "./MedicineShopEnhancements.css";
 
 const money = value => "R" + Number(value || 0).toFixed(2);
 const dateTime = value => value ? new Date(value).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
@@ -63,6 +65,15 @@ export function TestingAuth({ onOpenRole, onBack }) {
   </main>;
 }
 
+const shopCategory = product => {
+  const value = (product.name + " " + product.category).toLowerCase();
+  if (/paracetamol|pain|fever/.test(value)) return "Pain relief";
+  if (/rehydration|hydration|ors/.test(value)) return "Hydration";
+  if (/gauze|first aid|wound/.test(value)) return "First aid";
+  if (/thermometer|equipment|device/.test(value)) return "Health devices";
+  return String(product.category || "Other").replace(/\s+test item/ig, "");
+};
+
 export function PatientMedicineShop({ onBack }) {
   const workflow = useTestWorkflow();
   const [cart, setCart] = useState({});
@@ -73,8 +84,18 @@ export function PatientMedicineShop({ onBack }) {
   const [currentOrder, setCurrentOrder] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [cartOpen, setCartOpen] = useState(false);
   const products = workflow.inventory.filter(item => item.active);
   const cartLines = products.filter(item => Number(cart[item.id]) > 0).map(item => ({ ...item, quantity: Number(cart[item.id]) }));
+  const categories = ["All", ...Array.from(new Set(products.map(shopCategory)))];
+  const visibleProducts = products.filter(product => {
+    const matchesCategory = activeCategory === "All" || shopCategory(product) === activeCategory;
+    const haystack = [product.name, product.description, shopCategory(product)].join(" ").toLowerCase();
+    return matchesCategory && haystack.includes(searchQuery.trim().toLowerCase());
+  });
+  const itemCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal + (fulfilment === "delivery" ? 35 : 0);
   const orderHistory = useMemo(() => workflow.orders.filter(order => order.testOnly), [workflow.orders]);
@@ -86,6 +107,7 @@ export function PatientMedicineShop({ onBack }) {
   const startCheckout = () => {
     setError("");
     if (!cartLines.length) { setError("Add at least one item to your basket."); return; }
+    setCartOpen(false);
     setStage("details");
   };
   const createOrder = event => {
@@ -114,23 +136,56 @@ export function PatientMedicineShop({ onBack }) {
 
   return <section className="page-content test-shop-page">
     <button className="test-back-link" onClick={stage === "catalogue" ? onBack : () => { setError(""); setStage(stage === "payment" ? "details" : stage === "details" ? "catalogue" : "catalogue"); }}><ArrowLeft size={16}/> {stage === "catalogue" ? "Back to patient home" : "Back"}</button>
-    <div className="test-page-heading"><span className="test-role-icon role-pharmacy"><ShoppingBag size={23}/></span><div><div className="eyebrow">PATIENT PHARMACY</div><h1>{stage === "catalogue" ? "Order medication" : stage === "details" ? "Delivery details" : stage === "payment" ? "Secure checkout preview" : stage === "pending" ? "Payment pending" : "Test order created"}</h1><p>Sample catalogue and test workflow only. No real medication is sold.</p></div><span className="test-open-chip">TEST MODE</span></div>
-    <div className="test-payment-note"><ShieldCheck size={18}/><span>Mock payment only. Real payment processing is not connected. Test authorisation is clearly marked and never represents real money collected.</span></div>
+    <div className="test-page-heading"><span className="test-role-icon role-pharmacy"><ShoppingBag size={23}/></span><div><div className="eyebrow">PATIENT PHARMACY</div><h1>{stage === "catalogue" ? "Order medication" : stage === "details" ? "Delivery details" : stage === "payment" ? "Secure checkout preview" : stage === "pending" ? "Payment pending" : stage === "history" ? "My test orders" : "Test order created"}</h1><p>Sample catalogue and test workflow only. No real medication is sold.</p></div><span className="test-open-chip">TEST MODE</span></div>
+    <div className="test-payment-note"><ShieldCheck size={18}/><span>Preview only: sample products, prices and test orders. Real pharmacy inventory and payment processing are not connected.</span></div>
     {error && <div className="inline-message test-error"><AlertCircle size={18}/><span>{error}</span></div>}
-    {notice && <div className="inline-message"><CheckCircle2 size={18}/><span>{notice}</span></div>}
+    {notice && <div className="inline-message"><CheckCircle2 size={18}/><span>{notice}</span><button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X size={15}/></button></div>}
     {stage === "catalogue" && <>
-      <div className="test-shop-toolbar"><div><h2>Sample pharmacy catalogue</h2><p>Illustrative items and prices for checking the order-to-pharmacy flow.</p></div><button className="button button-outline" onClick={() => setStage("history")}>My test orders ({orderHistory.length})</button></div>
-      <div className="test-product-grid">{products.map(product => <article className="test-product-card" key={product.id}><div className="test-product-art"><Pill size={26}/></div><span className="test-product-tag">{product.category}</span><h3>{product.name}</h3><p>{product.description}</p><div className="test-product-bottom"><strong>{money(product.price)}</strong><small>{product.stock} test units</small></div><div className="test-quantity-control"><button aria-label={"Remove one " + product.name} onClick={() => changeQuantity(product.id, Number(cart[product.id] || 0) - 1)} disabled={!cart[product.id]}>−</button><span>{cart[product.id] || 0}</span><button aria-label={"Add one " + product.name} onClick={() => changeQuantity(product.id, Number(cart[product.id] || 0) + 1)} disabled={Number(cart[product.id] || 0) >= product.stock}>+</button></div></article>)}</div>
-      <div className="test-cart-footer"><div><span>{cartLines.reduce((sum, item) => sum + item.quantity, 0)} item(s)</span><strong>{money(subtotal)}</strong></div><button className="button button-primary" onClick={startCheckout}>Continue to checkout <ArrowRight size={16}/></button></div>
+      <div className="test-shop-toolbar medicine-shop-toolbar">
+        <div><h2>Find medication and health essentials</h2><p>Search by name or browse categories. Add items to your basket as you go.</p></div>
+        <button className="button button-outline" onClick={() => { setCartOpen(false); setStage("history"); }}>My test orders ({orderHistory.length})</button>
+      </div>
+      <label className="medicine-search">
+        <Search size={19} aria-hidden="true"/>
+        <input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search medication or health products" aria-label="Search medication or health products"/>
+        {searchQuery && <button type="button" aria-label="Clear search" onClick={() => setSearchQuery("")}><X size={16}/></button>}
+      </label>
+      <div className="medicine-category-row" role="group" aria-label="Medicine categories">
+        {categories.map(category => <button type="button" key={category} className={activeCategory === category ? "medicine-category active" : "medicine-category"} onClick={() => setActiveCategory(category)}>{category}</button>)}
+      </div>
+      <div className="medicine-results-heading"><span>{visibleProducts.length} {visibleProducts.length === 1 ? "item" : "items"}</span><span>{activeCategory === "All" ? "All categories" : activeCategory}</span></div>
+      {visibleProducts.length ? <div className="test-product-grid medicine-product-grid">{visibleProducts.map(product => <article className="test-product-card medicine-product-card" key={product.id}>
+        <div className="test-product-art"><Pill size={26}/></div>
+        <span className="test-product-tag">{shopCategory(product)}</span>
+        <h3>{product.name}</h3>
+        <p>{product.description}</p>
+        <div className="test-product-bottom"><strong>{money(product.price)}</strong><small>{product.stock} test units</small></div>
+        <div className="test-quantity-control"><button aria-label={"Remove one " + product.name} onClick={() => changeQuantity(product.id, Number(cart[product.id] || 0) - 1)} disabled={!cart[product.id]}>−</button><span>{cart[product.id] || 0} in basket</span><button aria-label={"Add one " + product.name} onClick={() => changeQuantity(product.id, Number(cart[product.id] || 0) + 1)} disabled={Number(cart[product.id] || 0) >= product.stock}>+</button></div>
+      </article>)}</div> : <div className="empty-state medicine-empty"><Search size={28}/><h3>No matching products</h3><p>Try another search or choose a different category.</p><button className="button button-outline" onClick={() => { setSearchQuery(""); setActiveCategory("All"); }}>Clear filters</button></div>}
+      <button type="button" className="medicine-floating-basket" onClick={() => setCartOpen(open => !open)} aria-expanded={cartOpen} aria-label={"Open basket, " + itemCount + " items"}>
+        <span className="medicine-basket-icon"><ShoppingCart size={21}/>{itemCount > 0 && <span className="medicine-basket-count">{itemCount}</span>}</span>
+        <span className="medicine-basket-copy"><strong>{itemCount ? "View basket" : "Your basket"}</strong><small>{itemCount} {itemCount === 1 ? "item" : "items"}</small></span>
+        <strong className="medicine-basket-total">{money(subtotal)}</strong>
+      </button>
+      {cartOpen && <div className="medicine-cart-panel" role="dialog" aria-label="Your basket">
+        <div className="medicine-cart-head"><div><h2>Your basket</h2><p>{itemCount} {itemCount === 1 ? "item" : "items"}</p></div><button type="button" aria-label="Close basket" onClick={() => setCartOpen(false)}><X size={18}/></button></div>
+        {cartLines.length ? <div className="medicine-cart-lines">{cartLines.map(item => <div className="medicine-cart-line" key={item.id}>
+          <div className="medicine-cart-item"><strong>{item.name}</strong><small>{money(item.price)} each</small></div>
+          <div className="medicine-cart-qty"><button type="button" aria-label={"Remove one " + item.name} onClick={() => changeQuantity(item.id, item.quantity - 1)}>−</button><span>{item.quantity}</span><button type="button" aria-label={"Add one " + item.name} onClick={() => changeQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock}>+</button></div>
+          <strong>{money(item.price * item.quantity)}</strong>
+        </div>)}</div> : <div className="medicine-cart-empty"><ShoppingCart size={24}/><p>Your basket is empty. Add products to begin.</p></div>}
+        <div className="medicine-cart-total"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
+        <p className="medicine-cart-note">Delivery or collection details and any applicable fees are shown at checkout.</p>
+        <button className="button button-primary full" type="button" disabled={!itemCount} onClick={startCheckout}>Continue to checkout <ArrowRight size={16}/></button>
+      </div>}
     </>}
-    {stage === "details" && <form className="test-checkout-layout" onSubmit={createOrder}><div className="test-surface"><h2>Contact and fulfilment</h2><label>Test patient name<input required value={patient.name} onChange={e => setPatient({ ...patient, name: e.target.value })}/></label><label>Phone number<input required type="tel" value={patient.phone} onChange={e => setPatient({ ...patient, phone: e.target.value })} placeholder="Test number only"/></label><div className="test-choice-row"><label className={fulfilment === "delivery" ? "test-choice selected" : "test-choice"}><input type="radio" name="fulfilment" checked={fulfilment === "delivery"} onChange={() => setFulfilment("delivery")}/><Truck size={18}/><strong>Delivery</strong><small>Illustrative fee R35</small></label><label className={fulfilment === "pickup" ? "test-choice selected" : "test-choice"}><input type="radio" name="fulfilment" checked={fulfilment === "pickup"} onChange={() => setFulfilment("pickup")}/><Package size={18}/><strong>Pickup</strong><small>No delivery fee</small></label></div>{fulfilment === "delivery" && <label>Delivery address<input required value={patient.address} onChange={e => setPatient({ ...patient, address: e.target.value })} placeholder="Test address only"/></label>}<label>Order note (optional)<textarea rows={3} value={patient.notes} onChange={e => setPatient({ ...patient, notes: e.target.value })} placeholder="No sensitive medical information"/></label><button className="button button-primary full" type="submit">Create test order <ArrowRight size={16}/></button></div><OrderSummary items={cartLines} subtotal={subtotal} deliveryFee={fulfilment === "delivery" ? 35 : 0} total={total}/></form>}
+    {stage === "details" && <form className="test-checkout-layout" onSubmit={createOrder}><div className="test-surface"><h2>Contact and fulfilment</h2><label>Test patient name<input required value={patient.name} onChange={e => setPatient({ ...patient, name: e.target.value })}/></label><label>Phone number<input required type="tel" value={patient.phone} onChange={e => setPatient({ ...patient, phone: e.target.value })} placeholder="Test number only"/></label><div className="test-choice-row"><label className={fulfilment === "delivery" ? "test-choice selected" : "test-choice"}><input type="radio" name="fulfilment" checked={fulfilment === "delivery"} onChange={() => setFulfilment("delivery")}/><Truck size={18}/><strong>Delivery</strong><small>Illustrative fee R35</small></label><label className={fulfilment === "pickup" ? "test-choice selected" : "test-choice"}><input type="radio" name="fulfilment" checked={fulfilment === "pickup"} onChange={() => setFulfilment("pickup")}/><Package size={18}/><strong>Pickup</strong><small>No delivery fee</small></label></div>{fulfilment === "delivery" && <label>Delivery address<input required value={patient.address} onChange={e => setPatient({ ...patient, address: e.target.value })} placeholder="Test address only"/></label>}<label>Order note (optional)<textarea rows={3} value={patient.notes} onChange={e => setPatient({ ...patient, notes: e.target.value })} placeholder="No sensitive medical information"/></label><button className="button button-primary full" type="submit">Continue to payment <ArrowRight size={16}/></button></div><OrderSummary items={cartLines} subtotal={subtotal} deliveryFee={fulfilment === "delivery" ? 35 : 0} total={total}/></form>}
     {stage === "payment" && currentOrder && <div className="test-checkout-layout"><div className="test-surface"><div className="test-payment-title"><CreditCard size={24}/><div><h2>Payment method</h2><p>Payment gateway awaiting configuration</p></div></div><div className="test-payment-methods">{[{id:"card_test",title:"Bank card",detail:"Test checkout preview only"},{id:"eft_test",title:"Instant EFT",detail:"Provider connection pending"},{id:"wallet_test",title:"HealthReach wallet",detail:"Wallet payments not connected"}].map(item => <label className={method === item.id ? "test-method selected" : "test-method"} key={item.id}><input type="radio" name="method" checked={method === item.id} onChange={() => setMethod(item.id)}/><span className="test-method-icon"><Wallet size={18}/></span><span><strong>{item.title}</strong><small>{item.detail}</small></span></label>)}</div><div className="test-payment-note"><AlertCircle size={17}/><span>Do not enter real card details. No payment provider has been called and no real funds will move.</span></div><button className="button button-primary full" onClick={simulatePayment}>Simulate test authorisation <ArrowRight size={16}/></button><button className="button button-outline full" onClick={leavePending}>Leave payment pending</button></div><OrderSummary items={currentOrder.items} subtotal={currentOrder.subtotal} deliveryFee={currentOrder.deliveryFee} total={currentOrder.total} orderId={currentOrder.id}/></div>}
     {(stage === "confirmation" || stage === "pending") && currentOrder && <div className="test-surface test-order-confirmation"><span className="test-confirm-icon">{stage === "confirmation" ? <CheckCircle2 size={34}/> : <Clock3 size={34}/>}</span><h2>{stage === "confirmation" ? "Test payment authorised" : "Waiting for payment setup"}</h2><p>{stage === "confirmation" ? "This is a simulated test authorisation only. No money was collected. The pharmacy can now see this test order." : "Your test order is saved, but payment is pending. The pharmacy must not prepare or release this order."}</p><div className="test-confirm-details"><div><span>Order reference</span><strong>{currentOrder.id}</strong></div><div><span>Order status</span><strong>{statusLabel(readWorkflow().orders.find(order => order.id === currentOrder.id)?.status || currentOrder.status)}</strong></div><div><span>Payment</span><strong>{stage === "confirmation" ? "TEST AUTHORISED — NO FUNDS MOVED" : "PENDING — NOT PAID"}</strong></div><div><span>Total (illustrative)</span><strong>{money(currentOrder.total)}</strong></div></div><button className="button button-primary" onClick={() => { setCart({}); setCurrentOrder(null); setNotice(""); setStage("history"); }}>View order tracking <ArrowRight size={16}/></button></div>}
     {stage === "history" && <div className="test-order-list"><div className="test-shop-toolbar"><div><h2>My test orders</h2><p>Order progress shared with the pharmacy and driver workspaces in this browser.</p></div><button className="button button-outline" onClick={() => setStage("catalogue")}>Back to catalogue</button></div>{orderHistory.length ? orderHistory.map(order => <OrderCard order={order} key={order.id}/>) : <div className="empty-state"><ShoppingBag size={28}/><h3>No test orders yet</h3><p>Create a test order to see the shared workflow.</p></div>}</div>}
     <div className="test-shop-footer"><span>Test data is stored in this browser only.</span><button className="text-button" onClick={onBack}>Return to patient home</button></div>
   </section>;
 }
-
 function OrderSummary({ items, subtotal, deliveryFee, total, orderId }) {
   return <aside className="test-surface test-order-summary"><h2>Order summary</h2>{orderId && <p className="test-order-ref">Reference: {orderId}</p>}{items.map((item, index) => <div className="test-summary-line" key={item.productId || item.name + index}><span>{item.quantity} × {item.name}</span><strong>{money(item.lineTotal ?? (item.unitPrice ?? item.price) * item.quantity)}</strong></div>)}<div className="test-summary-line"><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div className="test-summary-line"><span>Delivery</span><strong>{deliveryFee ? money(deliveryFee) : "Free"}</strong></div><div className="test-summary-total"><span>Total</span><strong>{money(total)}</strong></div><small>All prices are illustrative test values.</small></aside>;
 }
