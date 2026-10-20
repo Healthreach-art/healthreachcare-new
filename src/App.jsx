@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Activity, ArrowRight, Bell, CalendarDays, ChevronRight,
+  Activity, ArrowRight, Bell, CalendarDays, ChevronRight, CreditCard,
   HeartPulse, Home, MapPin, Pill, Moon, Sun,
   ShieldCheck, Stethoscope, UserRound, Video, Phone,
   Upload, House, MessageCircle, AlertCircle, X, Mail, LockKeyhole, BellRing, LogOut, Save,
@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
-import { useTestWorkflow } from "./test-workflow.js";
+import { transitionTestBooking, transitionTestOrder, useTestWorkflow } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
+import { canMessageBooking, canReviewBooking, createBookingMessage, createBookingReview, markNotificationRead, readCareJourney, recordCareEvent, toggleFavourite, writeCareJourney } from "./care-journey.js";
 
 
 const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
@@ -18,11 +19,13 @@ const readLegacyBookings = () => {
   catch { return []; }
 };
 const activityStatus = item => String(item.status || item.requestStatus || "pending").toLowerCase();
-const isClosedActivity = item => ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
-const activityKind = item => item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
+const isClosedActivity = item => ["payment", "service-update"].includes(item.kind) || ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
+const activityKind = item => item.kind === "payment" ? "Payment record" : item.kind === "service-update" ? "Service update" : item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
 const activityProviderLabel = item => {
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
   const medication = Boolean(item.items) || item.kind === "medication";
+  if (item.kind === "payment") return "Payment provider not connected (test record)";
+  if (item.kind === "service-update") return "Preview event";
   if (homecare) return item.coordinatorName || item.homecareCoordinatorName || "Central homecare coordination team (preview)";
   if (medication) return item.pharmacyName || item.providerName || "Pharmacy not assigned in preview";
   if (item.driverName || item.driverId) return item.driverName || "Delivery driver assigned (preview)";
@@ -39,12 +42,14 @@ const hasInvalidPreviewDate = item => {
   const year = Number(String(value).slice(0, 4));
   return !Number.isFinite(year) || year < 2000 || year > 2100;
 };
-const getActivityRecords = workflow => {
+const getActivityRecords = (workflow, journey = readCareJourney()) => {
   const legacy = readLegacyBookings().map(item => ({ ...item, source: "legacy-test" }));
   const orders = (workflow.orders || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "medication", source: "workflow-test" }));
   const bookings = (workflow.bookings || []).filter(item => item.testOnly).map(item => ({ ...item, kind: item.kind || (item.serviceType?.toLowerCase().includes("home") ? "homecare" : "appointment"), source: "workflow-test" }));
-  // Hide obviously invalid legacy demo dates from the patient UI without deleting browser data.
-  return [...legacy, ...bookings, ...orders]
+  const payments = (workflow.payments || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "payment", status: item.status, paymentStatus: item.status, total: item.amount, serviceType: "Payment record for " + item.orderId, source: "workflow-payment" }));
+  const events = (journey.events || []).filter(item => item.testOnly).map((item,index) => ({ ...item, id: "EVENT-" + (item.at || index) + "-" + (item.type || "update"), kind: "service-update", status: "update", createdAt: item.at, updatedAt: item.at, serviceType: item.title || item.type || "Care update", eventMessage: item.message, source: "journey-event" }));
+  // Hide invalid dates without deleting browser data; include payment records and explicit service events.
+  return [...legacy, ...bookings, ...orders, ...payments, ...events]
     .filter(item => !hasInvalidPreviewDate(item))
     .sort((a, b) => new Date(b.updatedAt || b.providerResponseAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.providerResponseAt || a.createdAt || 0).getTime());
 };
@@ -59,6 +64,8 @@ const activityStages = item => {
     done: Boolean(condition),
     current: !closed && Boolean(currentCondition)
   }));
+  if (item.kind === "payment") return makeStages([["Test payment event recorded", true, false], ["Real payment provider verification", false, false]]);
+  if (item.kind === "service-update") return makeStages([["Preview event recorded", true, false]]);
   if (medication) {
     const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
     const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
@@ -114,8 +121,9 @@ function App() {
     const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
   });
-  const [notifications, setNotifications] = useState([]);
-  const [notificationError] = useState("Testing mode: notifications are not connected.");
+  const [careJourney, setCareJourney] = useState(() => readCareJourney());
+  const [notifications, setNotifications] = useState(() => readCareJourney().notifications);
+  const [notificationError] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkBackground, setDarkBackground] = useState(false);
   const [notice, setNotice] = useState("");
@@ -129,9 +137,127 @@ function App() {
   const [supportNotice, setSupportNotice] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [activityFilter, setActivityFilter] = useState("all");
+  const [chatDraft, setChatDraft] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [journeyNotice, setJourneyNotice] = useState("");
   const workflow = useTestWorkflow();
-  const activities = getActivityRecords(workflow);
+  const activities = getActivityRecords(workflow, careJourney);
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
+
+  useEffect(() => {
+    const refreshCareJourney = () => {
+      const next = readCareJourney();
+      setCareJourney(next);
+      setNotifications(next.notifications);
+    };
+    window.addEventListener("healthreachcare-care-journey-updated", refreshCareJourney);
+    window.addEventListener("storage", refreshCareJourney);
+    return () => {
+      window.removeEventListener("healthreachcare-care-journey-updated", refreshCareJourney);
+      window.removeEventListener("storage", refreshCareJourney);
+    };
+  }, []);
+
+  const persistCareJourney = next => {
+    const saved = writeCareJourney(next);
+    setCareJourney(saved);
+    setNotifications(saved.notifications);
+    return saved;
+  };
+
+  const sendPreviewMessage = () => {
+    try {
+      if (!selectedActivity) return;
+      const message = createBookingMessage(selectedActivity, "local-test-patient", chatDraft);
+      const current = readCareJourney();
+      persistCareJourney({ ...current, messages: [message, ...current.messages] });
+      recordCareEvent({ type: "chat_message_saved", title: "Preview message saved", message: "Saved on this device only. No provider was contacted.", bookingId: selectedActivity.id });
+      const refreshed = readCareJourney();
+      setCareJourney(refreshed);
+      setNotifications(refreshed.notifications);
+      setChatDraft("");
+      setJourneyNotice("Message saved in this browser only. The assigned provider cannot receive it until secure shared chat is connected.");
+    } catch (error) {
+      setJourneyNotice(error.message || "This conversation is unavailable.");
+    }
+  };
+
+  const submitPreviewReview = event => {
+    event.preventDefault();
+    try {
+      if (!selectedActivity) return;
+      const current = readCareJourney();
+      const review = createBookingReview(selectedActivity, reviewRating, reviewComment, current.reviews);
+      persistCareJourney({ ...current, reviews: [review, ...current.reviews] });
+      recordCareEvent({ type: "review_saved", title: "Preview review saved", message: "Your review is stored on this device only.", bookingId: selectedActivity.id });
+      const refreshed = readCareJourney();
+      setCareJourney(refreshed);
+      setNotifications(refreshed.notifications);
+      setJourneyNotice("Review saved locally in preview mode. It has not been published to a provider profile.");
+      setReviewComment("");
+    } catch (error) {
+      setJourneyNotice(error.message || "This review could not be saved.");
+    }
+  };
+
+  const toggleActivityFavourite = () => {
+    if (!selectedActivity) return;
+    const providerId = selectedActivity.providerId || selectedActivity.doctorId || selectedActivity.coordinatorId;
+    if (!providerId) {
+      setJourneyNotice("This request has no assigned provider to save yet.");
+      return;
+    }
+    try {
+      const current = readCareJourney();
+      const favourites = toggleFavourite(current.favourites, { id: providerId, name: activityProviderLabel(selectedActivity), kind: activityKind(selectedActivity) });
+      persistCareJourney({ ...current, favourites });
+      setJourneyNotice(favourites.some(item => item.id === providerId) ? "Provider saved to favourites on this device. No booking or chat access was created." : "Provider removed from favourites.");
+    } catch (error) {
+      setJourneyNotice(error.message || "Could not update favourites.");
+    }
+  };
+
+  const markNotificationAsRead = notification => {
+    const current = readCareJourney();
+    persistCareJourney({ ...current, notifications: current.notifications.map(item => item.id === notification.id ? markNotificationRead(item) : item) });
+  };
+
+  const cancelPreviewActivity = () => {
+    if (!selectedActivity) return;
+    const status = activityStatus(selectedActivity);
+    const medication = activityKind(selectedActivity) === "Medication order";
+    const allowedStatuses = medication ? ["awaiting_payment", "awaiting_pharmacy"] : ["pending", "requested", "awaiting_provider_review"];
+    if (!allowedStatuses.includes(status)) {
+      setJourneyNotice("This preview only allows cancellation before provider action. Any paid cancellation/refund policy must be configured on the server.");
+      return;
+    }
+    try {
+      if (selectedActivity.source === "workflow-test") {
+        const result = medication ? transitionTestOrder(selectedActivity.id, "cancelled") : transitionTestBooking(selectedActivity.id, "cancelled");
+        if (result?.error) throw new Error(result.error);
+        setSelectedActivity({ ...selectedActivity, ...result.value, status: "cancelled", cancellationReason: result.value?.cancellationReason || "Cancelled by patient in test preview" });
+      } else {
+        const current = readLegacyBookings();
+        const index = current.findIndex(item => item.id === selectedActivity.id);
+        if (index < 0) throw new Error("This local test request could not be found.");
+        const at = new Date().toISOString();
+        const previous = current[index];
+        const statusHistory = Array.isArray(previous.statusHistory) ? previous.statusHistory : [{ status, at: previous.createdAt || at, testOnly: true }];
+        current[index] = { ...previous, status: "cancelled", requestStatus: "cancelled", cancellationReason: "Cancelled by patient in test preview", cancellationAt: at, updatedAt: at, statusHistory: [...statusHistory, { status: "cancelled", at, testOnly: true }] };
+        localStorage.setItem(LEGACY_BOOKINGS_KEY, JSON.stringify(current));
+        window.dispatchEvent(new CustomEvent("healthreachcare-test-bookings-updated"));
+        setSelectedActivity({ ...current[index], source: "legacy-test" });
+        try { recordCareEvent({ type: "test_booking_cancelled", title: "Test request cancelled", message: "Cancelled locally in preview. No real service or refund was processed.", bookingId: selectedActivity.id, at }); } catch { /* Do not block a local cancellation on a notification failure. */ }
+      }
+      const refreshed = readCareJourney();
+      setCareJourney(refreshed);
+      setNotifications(refreshed.notifications);
+      setJourneyNotice(medication ? "Test order cancelled. If a test authorisation existed, any refund remains pending admin review; no refund is marked complete." : "Test request cancelled locally. No provider was contacted and no payment or refund was processed.");
+    } catch (error) {
+      setJourneyNotice(error.message || "Could not cancel this preview request.");
+    }
+  };
 
   const openForm = (type, extra = {}) => {
     setNotice("");
@@ -208,6 +334,7 @@ function App() {
         </div>
       </div> : <div className="tracker-empty-state"><HeartPulse size={28}/><strong>Your care journey starts here</strong><p>Your latest active booking or medication order will appear here.</p><div className="tracker-empty-actions"><button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("doctor-booking")}>Book a doctor <ArrowRight size={14}/></button><button className="text-button" onClick={()=>setPage("homecare-booking")}>Request homecare <ArrowRight size={14}/></button></div></div>}
     </div>
+    {careJourney.favourites.length > 0 && <div className="dashboard-panel favourite-providers-panel"><div className="dashboard-panel-heading"><span className="dashboard-panel-icon recent-icon"><HeartPulse size={20}/></span><div><div className="eyebrow">YOUR SAVED PROVIDERS</div><h2>Favourites</h2><p>Saved on this device only.</p></div></div>{careJourney.favourites.map(provider=><div className="favourite-provider-row" key={provider.id}><div><strong>{provider.name}</strong><small>{provider.kind}</small></div><button type="button" className="button button-outline" disabled title="Live provider schedules are not connected">Check availability · not connected</button></div>)}<p className="tracker-preview-note">Saving a favourite does not create a booking. Rebooking will be enabled when verified provider schedules are connected.</p></div>}
     <div className="dashboard-panel">
       <div className="dashboard-panel-heading recent-heading">
         <span className="dashboard-panel-icon recent-icon"><Activity size={20}/></span>
@@ -248,7 +375,7 @@ function App() {
   const renderActivities = () => {
     const filtered = activities.filter(item => {
       if (activityFilter === "active") return !isClosedActivity(item);
-      if (activityFilter === "past") return ["delivered", "completed"].includes(activityStatus(item));
+      if (activityFilter === "past") return ["delivered", "completed"].includes(activityStatus(item)) || ["payment", "service-update"].includes(item.kind);
       if (activityFilter === "cancelled") return ["cancelled", "canceled", "declined", "rejected"].includes(activityStatus(item));
       return true;
     });
@@ -257,16 +384,22 @@ function App() {
       <div className="activity-filters" role="group" aria-label="Filter activities">{[["all","All"],["active","Active"],["past","Past / completed"],["cancelled","Cancelled"]].map(([value,label])=><button type="button" key={value} className={activityFilter===value?"activity-filter active":"activity-filter"} onClick={()=>setActivityFilter(value)}>{label}</button>)}</div>
       <div className="panel"><div className="panel-heading"><div className="panel-icon"><CalendarDays/></div><div><h2>Care history</h2><p>Tap any item to view its full details and progress.</p></div></div>
         {filtered.length ? <div className="activity-list">{filtered.map(item=><button type="button" className="activity-card" key={item.id} onClick={()=>setSelectedActivity(item)}>
-          <span className="activity-card-icon">{item.items?<Pill/>:activityKind(item)==="Homecare request"?<House/>:activityKind(item)==="Medication order"?<Pill/>:<Stethoscope/>}</span>
-          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{item.providerName || item.doctorName || (item.items ? "Pharmacy assignment not connected" : "Provider not assigned")}</small>{["cancelled","canceled","declined","rejected"].includes(activityStatus(item)) && (item.cancellationReason || item.cancelReason) && <small className="activity-cancellation-reason">Reason: {item.cancellationReason || item.cancelReason}</small>}</span>
+          <span className="activity-card-icon">{item.kind==="payment"?<CreditCard/>:item.kind==="service-update"?<Bell/>:item.items?<Pill/>:activityKind(item)==="Homecare request"?<House/>:activityKind(item)==="Medication order"?<Pill/>:<Stethoscope/>}</span>
+          <span className="activity-card-main"><strong>{activityKind(item)}</strong><small>{item.id || "Preview reference"} · {activityDate(item.requestedDate ? item.requestedDate + "T" + (item.requestedTime || "00:00") : item.createdAt)}</small><span>{item.items ? item.items.map(line=>line.quantity+" × "+line.name).join(", ") : item.kind==="payment" ? (item.orderId || "Related order not recorded") + " · " + (typeof item.amount==="number" ? "R"+item.amount.toFixed(2) : "Amount not recorded") : item.kind==="service-update" ? (item.eventMessage || item.message || "Preview workflow event") : (item.serviceType || item.service || item.consultationMode || "Service details not recorded")}</span><small>{activityProviderLabel(item)}</small>{["cancelled","canceled","declined","rejected"].includes(activityStatus(item)) && (item.cancellationReason || item.cancelReason) && <small className="activity-cancellation-reason">Reason: {item.cancellationReason || item.cancelReason}</small>}</span>
           <span className={"activity-status status-"+activityStatus(item)}>{String(activityStatus(item)).replace(/_/g," ")}</span><ChevronRight size={17}/>
         </button>)}</div> : <div className="empty-state"><CalendarDays size={27}/><h3>{activityFilter==="cancelled"?"No cancelled activities":activityFilter==="past"?"No completed activities":"No activities yet"}</h3><p>Test requests and orders appear here when created in this preview. No real provider is contacted.</p><button className="button button-outline" onClick={()=>setPage("home")}>Browse services</button></div>}
       </div>
-      <div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Account and care updates</p></div></div>{notificationError?<div className="inline-message"><AlertCircle size={18}/><span>Notifications will appear here when connected.</span></div>:notifications.length?notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title||n.subject||"HealthReachCare update"}</strong><p>{n.message||n.body||"You have a new update."}</p></div></div>):<div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>Updates will appear here when available.</p></div>}</div>
+      <div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Account and care updates</p></div></div>{notificationError?<div className="inline-message"><AlertCircle size={18}/><span>Notifications will appear here when connected.</span></div>:notifications.length?notifications.map(n=><button type="button" className="notification-item notification-action" key={n.id} onClick={()=>markNotificationAsRead(n)}><span className="notification-dot"/><div><strong>{n.title||n.subject||"HealthReachCare update"}{n.unread && <small> · UNREAD</small>}</strong><p>{n.message||n.body||"You have a new update."}</p><small>{activityDate(n.createdAt)} · {n.testOnly ? "Preview event" : "Notification"}</small></div>{n.unread && <span className="activity-status">Mark read</span>}</button>):<div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>Notifications appear only when an event is recorded in this preview.</p></div>}</div>
       {selectedActivity && <div className="modal-backdrop" onClick={()=>setSelectedActivity(null)}><section className="request-modal activity-detail-modal" role="dialog" aria-modal="true" aria-label="Activity details" onClick={e=>e.stopPropagation()}>
         <div className="modal-head"><div><div className="eyebrow">ACTIVITY DETAILS · TEST PREVIEW</div><h2>{activityKind(selectedActivity)}</h2></div><button type="button" className="icon-button" aria-label="Close activity details" onClick={()=>setSelectedActivity(null)}><X/></button></div>
-        <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Service coordinator / provider",activityProviderLabel(selectedActivity)],["Delivery driver",selectedActivity.driverName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Fixed service price",selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):(typeof selectedActivity.servicePrice==="number"?"R"+selectedActivity.servicePrice.toFixed(2):(typeof selectedActivity.totalAmount==="number"?"R"+selectedActivity.totalAmount.toFixed(2):"Not configured in preview"))],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
+        <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Service coordinator / provider",activityProviderLabel(selectedActivity)],["Delivery driver",selectedActivity.driverName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Payment amount",selectedActivity.kind==="payment" && typeof selectedActivity.amount==="number" ? "R"+selectedActivity.amount.toFixed(2) : "Not recorded"],["Refund status",selectedActivity.refundStatus||"Not recorded"],["Fixed service price",selectedActivity.kind==="payment" ? "Not applicable — payment record" : selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):(typeof selectedActivity.servicePrice==="number"?"R"+selectedActivity.servicePrice.toFixed(2):(typeof selectedActivity.totalAmount==="number"?"R"+selectedActivity.totalAmount.toFixed(2):"Not configured in preview"))],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
         <h3 className="activity-timeline-title">Progress</h3><div className="tracker-timeline detail-timeline">{activityStages(selectedActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
+        <h3 className="activity-timeline-title">Status history</h3><div className="activity-status-history">{(Array.isArray(selectedActivity.statusHistory) && selectedActivity.statusHistory.length ? selectedActivity.statusHistory : [{status:activityStatus(selectedActivity),at:selectedActivity.updatedAt||selectedActivity.createdAt,note:"Current saved preview status"}]).map((entry,index)=><div className="activity-history-row" key={(entry.at||"history")+"-"+index}><span className="notification-dot"/><div><strong>{String(entry.status||"update").replace(/_/g," ")}</strong><small>{activityDate(entry.at||entry.createdAt)}</small>{entry.reason&&<p>Reason: {entry.reason}</p>}</div></div>)}{careJourney.events.filter(event=>event.bookingId===selectedActivity.id||event.orderId===selectedActivity.id).map((event,index)=><div className="activity-history-row" key={event.at+"-"+index}><span className="notification-dot"/><div><strong>{event.title||String(event.type||"update").replace(/_/g," ")}</strong><small>{activityDate(event.at)}</small><p>{event.message}</p></div></div>)}</div>
+        {["Doctor appointment","Homecare request"].includes(activityKind(selectedActivity)) && (selectedActivity.providerId||selectedActivity.doctorId||selectedActivity.coordinatorId) && <div className="panel activity-interaction-panel"><div className="panel-heading"><div className="panel-icon"><HeartPulse/></div><div><h3>Provider preferences</h3><p>Save this assigned provider for later</p></div></div><button type="button" className="button button-outline full" onClick={toggleActivityFavourite}>{careJourney.favourites.some(item=>item.id===(selectedActivity.providerId||selectedActivity.doctorId||selectedActivity.coordinatorId))?"Remove favourite provider":"Favourite this provider"}</button><p className="muted small">Saving a favourite does not create a booking, check availability or open chat. Rebooking requires a connected live schedule.</p></div>}
+        {["Doctor appointment","Homecare request"].includes(activityKind(selectedActivity)) && <div className="panel activity-interaction-panel"><div className="panel-heading"><div className="panel-icon"><MessageCircle/></div><div><h3>Booking conversation</h3><p>Conversation linked to this reference</p></div></div><div className="inline-message"><ShieldCheck size={17}/><span>Preview chat is stored in this browser only. It does not reach a doctor or coordinator until authenticated shared messaging is connected.</span></div><div className="preview-chat-history">{careJourney.messages.filter(message=>message.bookingId===selectedActivity.id).slice().reverse().map(message=><div className="preview-chat-message" key={message.id}><strong>{message.senderId==="local-test-patient"?"You":"Assigned provider"}</strong><p>{message.body}</p><small>{activityDate(message.createdAt)}</small></div>)}</div>{canMessageBooking(selectedActivity)?<div className="preview-chat-compose"><label htmlFor="preview-chat-message">Message</label><textarea id="preview-chat-message" rows={3} maxLength={2000} value={chatDraft} onChange={event=>setChatDraft(event.target.value)} placeholder="Write a message about this booking"/><button type="button" className="button button-primary full" onClick={sendPreviewMessage} disabled={!chatDraft.trim()}>Save preview message</button></div>:<p className="muted small">New messages unlock only after an assigned provider accepts the booking, and stop when the service ends.</p>}</div>}
+        {["Doctor appointment","Homecare request"].includes(activityKind(selectedActivity)) && <div className="panel activity-interaction-panel"><div className="panel-heading"><div className="panel-icon"><HeartPulse/></div><div><h3>Service review</h3><p>Reviews unlock after completion</p></div></div>{careJourney.reviews.filter(review=>review.bookingId===selectedActivity.id).map(review=><div className="preview-review" key={review.id}><strong>{"★".repeat(review.rating)}{"☆".repeat(5-review.rating)} · {review.rating}/5</strong><p>{review.comment||"No written comment."}</p><small>{activityDate(review.createdAt)} · Saved in preview only</small></div>)}{canReviewBooking(selectedActivity,careJourney.reviews)?<form onSubmit={submitPreviewReview}><label>Rating<select value={reviewRating} onChange={event=>setReviewRating(Number(event.target.value))}>{[5,4,3,2,1].map(score=><option value={score} key={score}>{score} / 5</option>)}</select></label><label>Comment (optional)<textarea rows={3} maxLength={1500} value={reviewComment} onChange={event=>setReviewComment(event.target.value)} placeholder="Share feedback about this completed service"/></label><button type="submit" className="button button-primary full">Save preview review</button></form>:careJourney.reviews.some(review=>review.bookingId===selectedActivity.id)?<p className="muted small">A review has already been saved for this booking.</p>:<p className="muted small">A review becomes available only when the booking status is completed or delivered.</p>}</div>}
+        {["pending","requested","awaiting_provider_review","awaiting_payment","awaiting_pharmacy"].includes(activityStatus(selectedActivity)) && <button type="button" className="button button-outline full" onClick={cancelPreviewActivity}>Cancel test request/order</button>}
+        {journeyNotice && <div className="inline-message"><AlertCircle size={17}/><span>{journeyNotice}</span><button type="button" className="text-button" onClick={()=>setJourneyNotice("")}>Dismiss</button></div>}
         <div className="inline-message"><ShieldCheck size={17}/><span>Test preview only. Provider, payment, pharmacy verification and driver tracking are not live. Do not enter real patient information.</span></div>
         <a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
         <button type="button" className="button button-outline full" onClick={()=>setSelectedActivity(null)}>Close details</button>
@@ -319,8 +452,8 @@ function App() {
   if (page.startsWith("test-")) return <TestRoleWorkspace role={page.slice(5)} onBack={() => setPage("auth")} />;
 
   return <div className={darkBackground ? "app-shell dark-background" : "app-shell"}>
-    <header className="topbar"><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><button className="icon-button theme-toggle" aria-label={darkBackground ? "Use light background" : "Use dark background"} title={darkBackground ? "Use light background" : "Use dark background"} onClick={()=>setDarkBackground(value=>!value)}>{darkBackground ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button notification-button" aria-label="Show notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.some(n=>!n.read && !n.isRead) && <span className="unread-dot"/>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
-    {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><div className="popover-notice" key={n.id}><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p></div>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
+    <header className="topbar"><button className="brand-button" onClick={()=>setPage("home")}><Brand/></button><div className="topbar-right"><button className="icon-button theme-toggle" aria-label={darkBackground ? "Use light background" : "Use dark background"} title={darkBackground ? "Use light background" : "Use dark background"} onClick={()=>setDarkBackground(value=>!value)}>{darkBackground ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button notification-button" aria-label={"Show notifications, " + notifications.filter(n=>n.unread).length + " unread"} onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{notifications.filter(n=>n.unread).length > 0 && <span className="notification-count">{notifications.filter(n=>n.unread).length > 99 ? "99+" : notifications.filter(n=>n.unread).length}</span>}</button><button className="profile-button" onClick={()=>setPage("account")}><span className="profile-circle"><UserRound size={17}/></span><span>{user?.displayName?.split(" ")[0] || "Account"}</span></button></div>
+    {showNotifications && <div className="notification-popover"><div className="popover-head"><strong>Notifications</strong><button onClick={()=>setShowNotifications(false)} aria-label="Close notifications"><X size={17}/></button></div>{notificationError ? <p className="muted small">{notificationError}</p> : notifications.length ? notifications.slice(0,5).map(n=><button type="button" className="popover-notice" key={n.id} onClick={()=>markNotificationAsRead(n)}><strong>{n.title || n.subject || "HealthReachCare update"}{n.unread && " · UNREAD"}</strong><p>{n.message || n.body || "You have a new update."}</p><small>{activityDate(n.createdAt)} · {n.unread ? "Mark read" : "Read"}</small></button>) : <p className="muted small">No new notifications.</p>}<button className="text-button" onClick={()=>{setPage("activities");setShowNotifications(false);}}>View all activities <ArrowRight size={15}/></button></div>}
 </header>
     <main>{page === "doctor-booking" ? <BookingFlow type="doctor" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "homecare-booking" ? <BookingFlow type="homecare" user={user} onBack={()=>setPage("home")} onOpenActivities={()=>setPage("activities")}/> : page === "doctor-provider" ? <ProviderWorkspace role="doctor" onBack={()=>setPage("home")}/> : page === "homecare-provider" ? <ProviderWorkspace role="homecare" onBack={()=>setPage("home")}/> : page === "home" ? renderHome() : page === "activities" ? renderActivities() : page === "support" ? renderSupport() : page === "reminders" ? renderReminders() : page === "prescriptions" ? <section className="page-content"><button className="text-button" onClick={()=>setPage("home")}><ArrowRight size={15} className="back-arrow"/> Back to Home</button><div className="eyebrow">PRESCRIPTION MEDICINES</div><h1>Upload Prescription</h1><p className="lead">A prescription is required only for medicines classified as prescription-only or where the selected pharmacy requires it.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><ShieldCheck/></div><div><h2>Secure prescription submission is not connected yet</h2><p>We will not store medical documents in browser storage or expose them through a public link.</p></div></div><div className="inline-message"><AlertCircle size={18}/><span>This repository currently has no connected authenticated server, private file storage, pharmacy-owned access control, audit log or scheduled retention cleanup. Uploading a real prescription is therefore disabled until those safeguards are implemented and tested.</span></div><p className="muted">When enabled, the patient will upload a prescription only when required; the selected pharmacy's authorised staff will review it before dispensing. A booking or order acknowledgement will not count as prescription approval. ID verification will be requested only where necessary; selfies will not be mandatory by default.</p></div></section> : page === "medicines" ? <PatientMedicineShop onBack={() => setPage("home")} onOpenActivities={() => setPage("activities")} /> : renderAccount()}</main>
     

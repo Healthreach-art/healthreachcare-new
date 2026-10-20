@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { recordCareEvent } from "./care-journey.js";
 
 export const WORKFLOW_KEY = "healthreachcare-test-workflow-v1";
 export const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
@@ -98,6 +99,7 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
     testOnly: true
   };
   updateWorkflow(draft => { draft.orders.unshift(order); return { value: order }; });
+  try { recordCareEvent({ type: "test_order_created", title: "Test medication order created", message: "Saved in this browser only. No pharmacy was contacted.", orderId: order.id }); } catch { /* Preview notifications cannot block order creation. */ }
   return order;
 }
 
@@ -125,12 +127,15 @@ export function recordTestPayment(orderId, method) {
     return { value: payment };
   });
   if (result?.error) throw new Error(result.error);
+  if (payment) {
+    try { recordCareEvent({ type: "test_payment_authorized", title: "Test payment authorisation recorded", message: "Simulation only. No funds moved and no real payment succeeded.", orderId, at: payment.createdAt }); } catch { /* Preview notifications cannot block the payment simulation. */ }
+  }
   return payment || result?.value;
 }
 
 export function transitionTestOrder(orderId, nextStatus) {
   const allowed = {
-    awaiting_payment: [],
+    awaiting_payment: ["cancelled"],
     awaiting_pharmacy: ["accepted", "cancelled"],
     accepted: ["preparing", "cancelled"],
     preparing: ["ready_for_delivery", "ready_for_pickup"],
@@ -159,13 +164,29 @@ export function transitionTestOrder(orderId, nextStatus) {
     }
     order.status = nextStatus;
     order.updatedAt = new Date().toISOString();
+    order.statusHistory = [...(Array.isArray(order.statusHistory) ? order.statusHistory : [{ status: "awaiting_payment", at: order.createdAt, testOnly: true }]), { status: nextStatus, at: order.updatedAt, testOnly: true }];
+    if (nextStatus === "cancelled") {
+      order.cancellationReason = "Cancelled by patient in test preview";
+      order.cancellationAt = order.updatedAt;
+      order.refundStatus = order.paymentStatus === "test_authorized" ? "requires_admin_review" : "not_applicable";
+    }
     return { value: order };
   });
+  if (!result?.error && result?.value) {
+    const message = nextStatus === "cancelled"
+      ? (result.value.refundStatus === "requires_admin_review" ? "Test cancellation recorded. Refund requires admin review and is not marked complete." : "Test cancellation recorded. No real payment or refund occurred.")
+      : "Order status changed to " + nextStatus.replace(/_/g, " ") + ". Local test data only.";
+    try { recordCareEvent({ type: nextStatus === "cancelled" ? "test_order_cancelled" : "test_order_status_changed", title: nextStatus === "cancelled" ? "Test order cancelled" : "Test order updated", message, orderId, at: result.value.updatedAt }); } catch { /* Preview notifications cannot block status changes. */ }
+  }
+  return result;
 }
 
 export function saveTestBooking(booking) {
-  const item = { ...booking, id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(), status: "awaiting_provider_review", paymentStatus: "not_started", testOnly: true, createdAt: new Date().toISOString() };
+  const homecare = booking?.kind === "homecare" || booking?.type === "homecare" || /home.?care/i.test(String(booking?.serviceType || booking?.service || ""));
+  if (homecare) throw new Error("Homecare bookings cannot be created in preview until a fixed price is configured and payment is verified server-side. No payment provider is connected.");
+  const item = { ...booking, id: booking.id || "TEST-REQ-" + Date.now().toString(36).toUpperCase(), status: "awaiting_provider_review", paymentStatus: "not_started", testOnly: true, createdAt: new Date().toISOString(), statusHistory: [{ status: "awaiting_provider_review", at: new Date().toISOString(), testOnly: true }] };
   updateWorkflow(draft => { draft.bookings.unshift(item); return { value: item }; });
+  try { recordCareEvent({ type: "test_booking_created", title: "Test care request created", message: "Saved in this browser only. No provider was contacted.", bookingId: item.id, at: item.createdAt }); } catch { /* Preview notifications cannot block booking creation. */ }
   return item;
 }
 
@@ -186,14 +207,26 @@ export function useTestWorkflow() {
 }
 
 export function transitionTestBooking(bookingId, nextStatus) {
-  const allowed = { awaiting_provider_review: ["accepted", "declined"], accepted: [], declined: [] };
+  const allowed = { awaiting_provider_review: ["accepted", "declined", "cancelled"], accepted: ["cancelled"], declined: [], cancelled: [] };
   return updateWorkflow(draft => {
     const booking = draft.bookings.find(item => item.id === bookingId);
     if (!booking) return { error: "Test request not found. Refresh and try again." };
     if (booking.testOnly !== true) return { error: "This action is only available for test requests." };
     if (!(allowed[booking.status] || []).includes(nextStatus)) return { error: `Cannot change this request from ${booking.status} to ${nextStatus}.` };
+    const isHomecare = booking.kind === "homecare" || booking.type === "homecare" || /home.?care/i.test(String(booking.serviceType || booking.service || ""));
+    if (isHomecare && nextStatus === "accepted" && !["paid", "test_authorized"].includes(String(booking.paymentStatus || "").toLowerCase())) return { error: "Homecare provider acceptance is blocked until payment is verified. No payment provider is connected in preview." };
     booking.status = nextStatus;
     booking.updatedAt = new Date().toISOString();
+    booking.statusHistory = [...(Array.isArray(booking.statusHistory) ? booking.statusHistory : [{ status: "awaiting_provider_review", at: booking.createdAt, testOnly: true }]), { status: nextStatus, at: booking.updatedAt, testOnly: true }];
+    if (nextStatus === "cancelled") {
+      booking.cancellationReason = "Cancelled by patient in test preview";
+      booking.cancellationAt = booking.updatedAt;
+    }
     return { value: booking };
   });
+  if (!result?.error && result?.value) {
+    const message = nextStatus === "cancelled" ? "Test cancellation recorded. No real service or refund was processed." : "Request status changed to " + nextStatus.replace(/_/g, " ") + ". Local test data only.";
+    try { recordCareEvent({ type: nextStatus === "cancelled" ? "test_booking_cancelled" : "test_booking_status_changed", title: nextStatus === "cancelled" ? "Test care request cancelled" : "Test care request updated", message, bookingId, at: result.value.updatedAt }); } catch { /* Preview notifications cannot block status changes. */ }
+  }
+  return result;
 }
