@@ -213,7 +213,7 @@ export function TestRoleWorkspace({ role, onBack }) {
     setBusy("");
     setStockDrafts({});
     if (result?.error) setError(result.error);
-    else setNotice(`Test order ${order.id} updated to ${statusLabel(nextStatus)}. This is local test data only.`);
+    else setNotice(nextStatus === "cancelled" ? `Order ${order.id} cancelled in the sandbox. Any test payment was marked refunded and deducted stock was restored. No funds moved.` : `Order ${order.id} updated to ${statusLabel(nextStatus)} in the sandbox.`);
   };
   const reviewPrescription = (item, nextStatus) => {
     const result = transitionTestPrescription(item.id, nextStatus, nextStatus === "needs_information" ? "Please provide a clearer sample document in the sandbox." : nextStatus === "rejected" ? "Sandbox review rejected this sample." : "Sample review step completed. This does not authorise real dispensing.");
@@ -236,9 +236,9 @@ export function TestRoleWorkspace({ role, onBack }) {
 
   const actionFor = order => {
     if (order.status === "awaiting_payment") return <span className="test-inline-status">Waiting for payment setup</span>;
-    if (order.status === "awaiting_pharmacy") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "accepted")}>Accept test order</button>;
-    if (order.status === "accepted") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "preparing")}>Start preparation</button>;
-    if (order.status === "preparing") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, order.fulfilment === "pickup" ? "ready_for_pickup" : "ready_for_delivery")}>{order.fulfilment === "pickup" ? "Ready for pickup" : "Ready for delivery"}</button>;
+    if (order.status === "awaiting_pharmacy") return <div className="test-order-actions"><button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "accepted")}>Accept order</button><button className="button button-outline" disabled={Boolean(busy)} onClick={() => updateStatus(order, "cancelled")}>Decline order</button></div>;
+    if (order.status === "accepted") return <div className="test-order-actions"><button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "preparing")}>Start preparation</button><button className="button button-outline" disabled={Boolean(busy)} onClick={() => updateStatus(order, "cancelled")}>Cancel order</button></div>;
+    if (order.status === "preparing") return <div className="test-order-actions"><button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, order.fulfilment === "pickup" ? "ready_for_pickup" : "ready_for_delivery")}>{order.fulfilment === "pickup" ? "Ready for pickup" : "Ready for delivery"}</button><button className="button button-outline" disabled={Boolean(busy)} onClick={() => updateStatus(order, "cancelled")}>Cancel & restock</button></div>;
     if (role === "driver" && order.status === "ready_for_delivery") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "out_for_delivery")}>Start delivery</button>;
     if (role === "driver" && order.status === "out_for_delivery") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "delivered")}>Mark delivered</button>;
     return <span className="test-inline-status">{role === "driver" ? "No delivery action" : "In progress"}</span>;
