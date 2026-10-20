@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Activity, ArrowRight, Bell, CalendarDays, ChevronRight,
+  Activity, ArrowRight, Bell, CalendarDays, ChevronRight, CreditCard,
   HeartPulse, Home, MapPin, Pill, Moon, Sun,
   ShieldCheck, Stethoscope, UserRound, Video, Phone,
   Upload, House, MessageCircle, AlertCircle, X, Mail, LockKeyhole, BellRing, LogOut, Save,
@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
-import { useTestWorkflow } from "./test-workflow.js";
+import { transitionTestBooking, transitionTestOrder, useTestWorkflow } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
+import { canMessageBooking, canReviewBooking, createBookingMessage, createBookingReview, markNotificationRead, readCareJourney, recordCareEvent, toggleFavourite, writeCareJourney } from "./care-journey.js";
 
 
 const LEGACY_BOOKINGS_KEY = "healthreachcare-test-bookings";
@@ -18,11 +19,13 @@ const readLegacyBookings = () => {
   catch { return []; }
 };
 const activityStatus = item => String(item.status || item.requestStatus || "pending").toLowerCase();
-const isClosedActivity = item => ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
-const activityKind = item => item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
+const isClosedActivity = item => ["payment", "service-update"].includes(item.kind) || ["delivered", "completed", "declined", "rejected", "cancelled", "canceled"].includes(activityStatus(item));
+const activityKind = item => item.kind === "payment" ? "Payment record" : item.kind === "service-update" ? "Service update" : item.items ? "Medication order" : item.kind === "medication" ? "Medication order" : item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "") ? "Homecare request" : "Doctor appointment";
 const activityProviderLabel = item => {
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
   const medication = Boolean(item.items) || item.kind === "medication";
+  if (item.kind === "payment") return "Payment provider not connected (test record)";
+  if (item.kind === "service-update") return "Preview event";
   if (homecare) return item.coordinatorName || item.homecareCoordinatorName || "Central homecare coordination team (preview)";
   if (medication) return item.pharmacyName || item.providerName || "Pharmacy not assigned in preview";
   if (item.driverName || item.driverId) return item.driverName || "Delivery driver assigned (preview)";
@@ -39,12 +42,14 @@ const hasInvalidPreviewDate = item => {
   const year = Number(String(value).slice(0, 4));
   return !Number.isFinite(year) || year < 2000 || year > 2100;
 };
-const getActivityRecords = workflow => {
+const getActivityRecords = (workflow, journey = readCareJourney()) => {
   const legacy = readLegacyBookings().map(item => ({ ...item, source: "legacy-test" }));
   const orders = (workflow.orders || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "medication", source: "workflow-test" }));
   const bookings = (workflow.bookings || []).filter(item => item.testOnly).map(item => ({ ...item, kind: item.kind || (item.serviceType?.toLowerCase().includes("home") ? "homecare" : "appointment"), source: "workflow-test" }));
-  // Hide obviously invalid legacy demo dates from the patient UI without deleting browser data.
-  return [...legacy, ...bookings, ...orders]
+  const payments = (workflow.payments || []).filter(item => item.testOnly).map(item => ({ ...item, kind: "payment", status: item.status, paymentStatus: item.status, total: item.amount, serviceType: "Payment record for " + item.orderId, source: "workflow-payment" }));
+  const events = (journey.events || []).filter(item => item.testOnly).map((item,index) => ({ ...item, id: "EVENT-" + (item.at || index) + "-" + (item.type || "update"), kind: "service-update", status: "update", createdAt: item.at, updatedAt: item.at, serviceType: item.title || item.type || "Care update", eventMessage: item.message, source: "journey-event" }));
+  // Hide invalid dates without deleting browser data; include payment records and explicit service events.
+  return [...legacy, ...bookings, ...orders, ...payments, ...events]
     .filter(item => !hasInvalidPreviewDate(item))
     .sort((a, b) => new Date(b.updatedAt || b.providerResponseAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.providerResponseAt || a.createdAt || 0).getTime());
 };
@@ -59,6 +64,8 @@ const activityStages = item => {
     done: Boolean(condition),
     current: !closed && Boolean(currentCondition)
   }));
+  if (item.kind === "payment") return makeStages([["Test payment event recorded", true, false], ["Real payment provider verification", false, false]]);
+  if (item.kind === "service-update") return makeStages([["Preview event recorded", true, false]]);
   if (medication) {
     const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
     const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
@@ -114,8 +121,9 @@ function App() {
     const defaults = {name:"",phone:"",email:"",dob:"",address:"",careNotifications:true,medicationReminders:true,announcements:true};
     try { return {...defaults, ...JSON.parse(localStorage.getItem("healthreachcare-test-account") || "{}")}; } catch { return defaults; }
   });
-  const [notifications, setNotifications] = useState([]);
-  const [notificationError] = useState("Testing mode: notifications are not connected.");
+  const [careJourney, setCareJourney] = useState(() => readCareJourney());
+  const [notifications, setNotifications] = useState(() => readCareJourney().notifications);
+  const [notificationError] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkBackground, setDarkBackground] = useState(false);
   const [notice, setNotice] = useState("");
@@ -129,8 +137,12 @@ function App() {
   const [supportNotice, setSupportNotice] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [activityFilter, setActivityFilter] = useState("all");
+  const [chatDraft, setChatDraft] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [journeyNotice, setJourneyNotice] = useState("");
   const workflow = useTestWorkflow();
-  const activities = getActivityRecords(workflow);
+  const activities = getActivityRecords(workflow, careJourney);
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
 
   const openForm = (type, extra = {}) => {
