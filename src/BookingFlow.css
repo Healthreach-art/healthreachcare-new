@@ -17,3 +17,31 @@
 .booking-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px}
 @media(max-width:850px){.booking-service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.booking-service-grid{grid-template-columns:1fr}.booking-service-card{min-height:0;padding:15px;display:grid;grid-template-columns:45px minmax(0,1fr);column-gap:12px;align-items:center}.booking-service-icon{grid-row:span 2}.booking-service-card strong,.booking-service-card small{grid-column:2}.booking-select-label{grid-column:2;margin-top:2px}.booking-actions{gap:8px}.booking-actions .button{font-size:11px}}
+
+
+/* Polished, colourful service selection for the patient homecare journey */
+.booking-main-card{border-color:#d6e9df;background:linear-gradient(155deg,#ffffff 0%,#fbfefc 72%,#effaf4 100%)}
+.booking-section-title h2{color:#143e32}
+.booking-service-grid{gap:16px}
+.booking-service-card{min-height:190px;padding:19px;background:linear-gradient(145deg,#ffffff 25%,#eef9f3 100%);border-color:#d4e9dd;border-radius:18px}
+.booking-service-card:nth-child(2){background:linear-gradient(145deg,#ffffff 25%,#eaf7f0 100%)}
+.booking-service-card:nth-child(3){background:linear-gradient(145deg,#ffffff 25%,#f0f5ff 100%)}
+.booking-service-card:nth-child(4){background:linear-gradient(145deg,#ffffff 25%,#f3efff 100%)}
+.booking-service-card:nth-child(5){background:linear-gradient(145deg,#ffffff 25%,#fff6e8 100%)}
+.booking-service-card:nth-child(6){background:linear-gradient(145deg,#ffffff 25%,#eaf7fa 100%)}
+.booking-service-card.selected{border:2px solid #087f62;background:linear-gradient(145deg,#dff8eb 0%,#f7fffb 100%);box-shadow:0 0 0 3px #087f621c,0 9px 24px #087f6210}
+.booking-service-icon{width:48px;height:48px;background:#d8f4e5;color:#06664d}
+.booking-service-card:nth-child(2) .booking-service-icon{background:#d8f1e4;color:#08785a}
+.booking-service-card:nth-child(3) .booking-service-icon{background:#e0eaff;color:#3c67ae}
+.booking-service-card:nth-child(4) .booking-service-icon{background:#e9e0ff;color:#7052b0}
+.booking-service-card:nth-child(5) .booking-service-icon{background:#ffedce;color:#a86c0a}
+.booking-service-card:nth-child(6) .booking-service-icon{background:#dff3f7;color:#28758a}
+.booking-service-card strong{font-size:14px;color:#173c31}
+.booking-service-card small{font-size:11px;line-height:1.55;color:#536d62}
+.booking-select-label{background:#e0f5e9;color:#075f48}
+.booking-service-card.selected .booking-select-label{background:#087f62;color:#fff}
+.compact-test-banner{background:#e8f7ef;border-color:#bfe6d2;color:#315f4d}
+.booking-actions .button-primary{background:linear-gradient(110deg,#056b50,#078c68);box-shadow:0 5px 14px #087f6224}
+.booking-actions .button-primary:hover{background:#034d3d}
+.booking-confirmation .booking-success-illustration{background:#dff7e9;color:#087f62}
+@media(max-width:520px){.booking-service-card{min-height:0;padding:15px}.booking-service-card strong{font-size:13px}}
