@@ -11,7 +11,7 @@ const services = [
 ];
 const modes = ["In-person", "Video", "Phone"];
 const times = ["08:00", "09:00", "10:00", "11:00", "12:00", "14:00", "16:00", "18:00"];
-export default function BookingFlow({ type, onBack }) {
+export default function BookingFlow({ type, user, onBack }) {
   const homecare = type === "homecare";
   const [step, setStep] = useState(0);
   const [service, setService] = useState(services[0]);
@@ -32,7 +32,38 @@ export default function BookingFlow({ type, onBack }) {
     }
     setStep(current => Math.min(2, current + 1));
   };
-  const submit = () => setMessage("Preview only: no booking was sent. Connect a trusted backend before enabling account sign-in, provider availability, appointment reservations, homecare assignment or payments.");
+  const submit = () => {
+    try {
+      const key = "healthreachcare-test-bookings";
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      const item = {
+        id: "test-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+        kind: homecare ? "homecare" : "appointment",
+        providerId: homecare ? "demo-homecare-provider" : "demo-doctor-provider",
+        providerName: homecare ? "Demo Homecare Provider" : "Demo Doctor Provider",
+        patientName: name.trim(),
+        patientPhone: phone.trim(),
+        patientUid: "local-test-patient",
+        location: homecare ? address.trim() : "Patient-selected after provider confirms",
+        serviceType: homecare ? service.title : "Doctor appointment",
+        consultationMode: homecare ? "In-person" : mode,
+        duration: homecare ? duration + " hours" : "",
+        requestedDate: date,
+        requestedTime: time,
+        details: notes.trim(),
+        status: "pending",
+        requestStatus: "pending",
+        paymentStatus: "not_connected",
+        createdAt: new Date().toISOString()
+      };
+      localStorage.setItem(key, JSON.stringify([item, ...existing]));
+      window.dispatchEvent(new CustomEvent("healthreachcare-test-bookings-updated"));
+      setMessage("Test request sent to the " + (homecare ? "Homecare Provider" : "Doctor Provider") + " test portal in this browser. No real provider was contacted and no payment was taken.");
+      setStep(2);
+    } catch {
+      setMessage("Could not save the test request in this browser. Check browser storage settings and try again.");
+    }
+  };
   return <section className="page-content booking-page">
     <button className="booking-back-link" onClick={step === 0 ? onBack : () => { setStep(current => current - 1); setMessage(""); }}><ArrowLeft size={16}/> {step === 0 ? "Back to HealthReachCare" : "Previous step"}</button>
     <div className="booking-heading"><div className="booking-heading-icon">{homecare ? <House size={25}/> : <Stethoscope size={25}/>}</div><div><div className="eyebrow">{homecare ? "HOMECARE REQUEST" : "DOCTOR APPOINTMENT"}</div><h1>{homecare ? (step === 0 ? "Choose homecare" : step === 1 ? "Visit details" : "Review your request") : (step === 0 ? "Appointment preferences" : step === 1 ? "Your preferred appointment" : "Review your request")}</h1><p>{homecare ? "Request professional care at home." : "Choose your preferred consultation details."} The UI is prepared for a future backend integration but does not send data yet.</p></div></div>
@@ -47,8 +78,8 @@ export default function BookingFlow({ type, onBack }) {
       <label className="booking-field"><span>Preferred time</span><select value={time} onChange={e => setTime(e.target.value)} required><option value="">Choose a time</option>{times.map(t => <option key={t} value={t}>{t}</option>)}</select></label>
       {homecare && <label className="booking-field"><span>Duration</span><select value={duration} onChange={e => setDuration(e.target.value)}>{["1","2","4","8"].map(h => <option key={h} value={h}>{h} {h === "1" ? "hour" : "hours"}</option>)}</select></label>}
     </div>{!homecare && <div className="booking-field"><span>Consultation type</span><div className="booking-option-row">{modes.map(m => <button key={m} className={mode === m ? "booking-option selected" : "booking-option"} onClick={() => setMode(m)}>{m}</button>)}</div></div>}<label className="booking-field"><span>Additional notes (optional)</span><textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Avoid detailed medical information in this preview."/></label></div>}
-    {step === 2 && <div className="booking-main-card"><div className="booking-success-illustration"><CheckCircle2 size={42}/></div><h2>Review your request</h2><p className="booking-muted">This is a local preview only. No request has been created.</p><div className="booking-summary-table">{[["Patient",name],["Service",homecare ? service.title : "Doctor appointment"],["Consultation",homecare ? duration + " hours" : mode],["Address",homecare ? address : "To be selected after provider directory connects"],["Preferred date",date],["Preferred time",time],["Submission status","Not submitted"],["Payment","Not connected"]].map(([label,value]) => <div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div></div>}
+    {step === 2 && <div className="booking-main-card"><div className="booking-success-illustration"><CheckCircle2 size={42}/></div><h2>Review your request</h2><p className="booking-muted">Your test request is shared with the matching provider test portal in this browser only. It is not sent to a real provider.</p><div className="booking-summary-table">{[["Patient",name],["Service",homecare ? service.title : "Doctor appointment"],["Consultation",homecare ? duration + " hours" : mode],["Address",homecare ? address : "To be selected after provider directory connects"],["Preferred date",date],["Preferred time",time],["Submission status","Local test request"],["Assigned provider",homecare ? "Demo Homecare Provider" : "Demo Doctor Provider"],["Payment","Not connected"]].map(([label,value]) => <div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div></div>}
     {message && <div className="booking-validation-error"><AlertCircle size={17}/> {message}</div>}
-    <div className="booking-actions"><button className="button button-outline" onClick={step === 0 ? onBack : () => {setStep(current => current - 1);setMessage("");}}><ArrowLeft size={16}/> {step === 0 ? "Cancel" : "Back"}</button>{step < 2 ? <button className="button button-primary" onClick={next}>Continue <ArrowRight size={16}/></button> : <button className="button button-primary" onClick={submit}>Check backend readiness <ArrowRight size={16}/></button>}</div>
+    <div className="booking-actions"><button className="button button-outline" onClick={step === 0 ? onBack : () => {setStep(current => current - 1);setMessage("");}}><ArrowLeft size={16}/> {step === 0 ? "Cancel" : "Back"}</button>{step < 2 ? <button className="button button-primary" onClick={next}>Continue <ArrowRight size={16}/></button> : <button className="button button-primary" onClick={submit}>Send test booking <ArrowRight size={16}/></button>}</div>
   </section>;
 }
