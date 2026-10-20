@@ -238,17 +238,19 @@ export function saveTestBooking(booking) {
 // Sandbox prescription intake stores metadata only; no file bytes or medical document
 // are uploaded or persisted. Replace this with private object storage and pharmacy ACLs.
 export function saveTestPrescription({ patientName, fileName, fileType, fileSize, notes = "" }) {
+  const extension = String(fileName || "").toLowerCase().split(".").pop();
+  const resolvedType = fileType || ({ pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" }[extension] || "");
   const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
   if (!String(patientName || "").trim()) throw new Error("Enter the sandbox patient name.");
   if (!String(fileName || "").trim()) throw new Error("Choose a sample file to simulate intake.");
-  if (!allowedTypes.includes(fileType)) throw new Error("Use a PDF, JPG or PNG sample file.");
+  if (!allowedTypes.includes(resolvedType)) throw new Error("Use a PDF, JPG or PNG sample file.");
   if (!Number.isFinite(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 5 * 1024 * 1024) throw new Error("The sample file must be smaller than 5 MB.");
   const now = new Date().toISOString();
   const item = {
     id: "TEST-RX-" + Date.now().toString(36).toUpperCase(),
     patientName: String(patientName).trim().slice(0,100),
     fileName: String(fileName).split(/[\\/]/).pop().slice(0,160),
-    fileType,
+    fileType: resolvedType,
     fileSize: Number(fileSize),
     notes: String(notes || "").trim().slice(0,500),
     status: "awaiting_pharmacy_review",
@@ -377,6 +379,8 @@ export function transitionTestBooking(bookingId, nextStatus) {
     if (!(allowed[booking.status] || []).includes(nextStatus)) return { error: `Cannot change this request from ${booking.status} to ${nextStatus}.` };
     booking.status = nextStatus;
     booking.updatedAt = new Date().toISOString();
+    booking.providerResponseAt = booking.providerResponseAt || booking.updatedAt;
+    booking.statusHistory = [...(booking.statusHistory || []), { status: nextStatus, at: booking.updatedAt, testOnly: true }];
     return { value: booking };
   });
 }
