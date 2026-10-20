@@ -33,23 +33,51 @@ const getActivityRecords = workflow => {
 };
 const activityStages = item => {
   const status = activityStatus(item);
-  if (item.items || item.kind === "medication") {
-    const stages = [
-      ["Order submitted", ["awaiting_payment", "awaiting_pharmacy", "accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"]],
-      ["Pharmacy review", ["awaiting_pharmacy", "accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"]],
-      ["Payment verified", ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"]],
-      ["Preparing order", ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"]],
-      ["Ready / driver assigned", ["ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"]],
-      ["Out for delivery", ["out_for_delivery", "delivered"]],
-      ["Delivered", ["delivered"]]
-    ];
-    return stages.map(([label, reached]) => ({ label, done: reached.includes(status), current: reached.includes(status) && status !== "delivered" }));
-  }
+  const closed = ["declined", "rejected", "cancelled", "canceled"].includes(status);
+  const medication = Boolean(item.items) || item.kind === "medication";
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
-  const stages = homecare
-    ? [["Request submitted", ["pending", "requested", "awaiting_provider_review", "accepted", "confirmed", "completed"]], ["Provider response", ["accepted", "confirmed", "completed"]], ["Payment verified", ["confirmed", "completed"]], ["Service confirmed", ["confirmed", "completed"]], ["Service completed", ["completed"]]]
-    : [["Request submitted", ["pending", "requested", "awaiting_provider_review", "accepted", "confirmed", "completed"]], ["Doctor response", ["accepted", "confirmed", "completed"]], ["Appointment confirmed", ["confirmed", "completed"]], ["Appointment completed", ["completed"]]];
-  return stages.map(([label, reached]) => ({ label, done: reached.includes(status), current: reached.includes(status) && status !== "completed" }));
+  const paymentVerified = !item.testOnly && ["paid", "verified", "succeeded"].includes(String(item.paymentStatus || "").toLowerCase());
+  const makeStages = definitions => definitions.map(([label, condition, currentCondition]) => ({
+    label,
+    done: Boolean(condition),
+    current: !closed && Boolean(currentCondition)
+  }));
+  if (medication) {
+    const pharmacyReviewed = ["accepted", "preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const preparing = ["preparing", "ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const ready = ["ready_for_delivery", "ready_for_pickup", "out_for_delivery", "delivered"].includes(status);
+    const out = ["out_for_delivery", "delivered"].includes(status);
+    return makeStages([
+      ["Order submitted", true, status === "awaiting_payment" || status === "awaiting_pharmacy" || status === "pending"],
+      ["Pharmacy review", pharmacyReviewed, status === "awaiting_pharmacy"],
+      ["Payment verified", paymentVerified, ["awaiting_payment", "payment_pending", "pending_gateway"].includes(status)],
+      ["Preparing order", preparing, status === "preparing"],
+      ["Ready / driver assigned", ready, ["ready_for_delivery", "ready_for_pickup"].includes(status)],
+      ["Out for delivery", out, status === "out_for_delivery"],
+      ["Delivered", status === "delivered", false]
+    ]);
+  }
+  if (homecare) {
+    const submitted = ["pending", "requested", "awaiting_provider_review", "accepted", "confirmed", "completed"].includes(status);
+    const providerResponded = ["accepted", "confirmed", "completed"].includes(status);
+    const serviceConfirmed = ["confirmed", "completed"].includes(status);
+    return makeStages([
+      ["Request submitted", submitted, ["pending", "requested", "awaiting_provider_review"].includes(status)],
+      ["Payment verified", paymentVerified, !paymentVerified && !["cancelled", "canceled", "declined", "rejected"].includes(status)],
+      ["Provider response", providerResponded, status === "accepted"],
+      ["Service confirmed", serviceConfirmed, status === "confirmed"],
+      ["Service completed", status === "completed", false]
+    ]);
+  }
+  const submitted = ["pending", "requested", "awaiting_provider_review", "accepted", "confirmed", "completed"].includes(status);
+  const providerResponded = ["accepted", "confirmed", "completed"].includes(status);
+  const confirmed = ["confirmed", "completed"].includes(status);
+  return makeStages([
+    ["Request submitted", submitted, ["pending", "requested", "awaiting_provider_review"].includes(status)],
+    ["Doctor response", providerResponded, status === "accepted"],
+    ["Appointment confirmed", confirmed, status === "confirmed"],
+    ["Appointment completed", status === "completed", false]
+  ]);
 };
 
 const navItems = [
@@ -156,7 +184,7 @@ function App() {
       </div>
       {latestActiveActivity ? <div className="tracker-layout">
         <div className="tracker-latest-card">
-          <div className="tracker-topline"><div><strong>{activityKind(latestActiveActivity)}</strong><p>{latestActiveActivity.id || "Preview reference"} · {activityDate(latestActiveActivity.createdAt || latestActiveActivity.requestedDate)}</p></div><span className="tracker-status">{String(activityStatus(latestActiveActivity)).replace(/_/g," ")}</span></div>
+          <div className="tracker-topline"><div><strong>{activityKind(latestActiveActivity)}</strong><p>{latestActiveActivity.id || "Preview reference"} · {activityDate(latestActiveActivity.requestedDate ? latestActiveActivity.requestedDate + "T" + (latestActiveActivity.requestedTime || "00:00") : latestActiveActivity.createdAt)}</p><small className="tracker-last-update">Last update: {activityDate(latestActiveActivity.updatedAt || latestActiveActivity.providerResponseAt || latestActiveActivity.createdAt)}</small></div><span className="tracker-status">{String(activityStatus(latestActiveActivity)).replace(/_/g," ")}</span></div>
           <div className="tracker-timeline">{activityStages(latestActiveActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
           <p className="tracker-preview-note">Preview only. Provider, payment and driver updates are not live.</p>
           <button className="button button-primary" onClick={()=>{setSelectedActivity(latestActiveActivity);setPage("activities");}}>View request details <ArrowRight size={16}/></button>
@@ -220,7 +248,7 @@ function App() {
       <div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Account and care updates</p></div></div>{notificationError?<div className="inline-message"><AlertCircle size={18}/><span>Notifications will appear here when connected.</span></div>:notifications.length?notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title||n.subject||"HealthReachCare update"}</strong><p>{n.message||n.body||"You have a new update."}</p></div></div>):<div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>Updates will appear here when available.</p></div>}</div>
       {selectedActivity && <div className="modal-backdrop" onClick={()=>setSelectedActivity(null)}><section className="request-modal activity-detail-modal" role="dialog" aria-modal="true" aria-label="Activity details" onClick={e=>e.stopPropagation()}>
         <div className="modal-head"><div><div className="eyebrow">ACTIVITY DETAILS · TEST PREVIEW</div><h2>{activityKind(selectedActivity)}</h2></div><button type="button" className="icon-button" aria-label="Close activity details" onClick={()=>setSelectedActivity(null)}><X/></button></div>
-        <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Provider",selectedActivity.providerName||selectedActivity.doctorName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Fixed service price",selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):"Not configured in preview"],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
+        <div className="booking-summary-table activity-detail-table">{[["Reference",selectedActivity.id||"Preview reference"],["Status",String(activityStatus(selectedActivity)).replace(/_/g," ")],["Requested / created",activityDate(selectedActivity.createdAt||selectedActivity.requestedDate)],["Preferred schedule",selectedActivity.requestedDate?activityDate(selectedActivity.requestedDate+"T"+(selectedActivity.requestedTime||"00:00")):"Not recorded"],["Provider",selectedActivity.providerName||selectedActivity.doctorName||"Not assigned in preview"],["Service / items",selectedActivity.items?selectedActivity.items.map(line=>line.quantity+" × "+line.name).join(", "):(selectedActivity.serviceType||selectedActivity.service||"Not recorded")],["Location",selectedActivity.address||selectedActivity.location||"Not recorded"],["Payment",selectedActivity.paymentStatus||"Not connected"],["Fixed service price",selectedActivity.items&&typeof selectedActivity.total==="number"?"R"+selectedActivity.total.toFixed(2):(typeof selectedActivity.servicePrice==="number"?"R"+selectedActivity.servicePrice.toFixed(2):(typeof selectedActivity.totalAmount==="number"?"R"+selectedActivity.totalAmount.toFixed(2):"Not configured in preview"))],["Last update",activityDate(selectedActivity.updatedAt||selectedActivity.providerResponseAt||selectedActivity.createdAt)],["Cancellation reason",selectedActivity.cancellationReason||selectedActivity.cancelReason||"No reason recorded"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value||"Not recorded"}</strong></div>)}</div>
         <h3 className="activity-timeline-title">Progress</h3><div className="tracker-timeline detail-timeline">{activityStages(selectedActivity).map((stage,index)=><div className={"tracker-stage"+(stage.done?" done":"")+(stage.current?" current":"")} key={stage.label}><span className="tracker-stage-dot">{stage.done?"✓":index+1}</span><span>{stage.label}</span></div>)}</div>
         <div className="inline-message"><ShieldCheck size={17}/><span>Test preview only. Provider, payment, pharmacy verification and driver tracking are not live. Do not enter real patient information.</span></div>
         <a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
