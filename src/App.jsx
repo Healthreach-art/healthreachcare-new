@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import BookingFlow from "./BookingFlow.jsx";
 import ProviderWorkspace from "./ProviderWorkspace.jsx";
-import { useTestWorkflow } from "./test-workflow.js";
+import { transitionTestBooking, transitionTestOrder, useTestWorkflow } from "./test-workflow.js";
 import { PatientMedicineShop, TestRoleWorkspace, TestingAuth, TestingLanding } from "./TestingPortal.jsx";
 import { canMessageBooking, canReviewBooking, createBookingMessage, createBookingReview, markNotificationRead, readCareJourney, recordCareEvent, toggleFavourite, writeCareJourney } from "./care-journey.js";
 
@@ -138,6 +138,120 @@ function App() {
   const workflow = useTestWorkflow();
   const activities = getActivityRecords(workflow);
   const latestActiveActivity = activities.find(item => !isClosedActivity(item));
+
+  useEffect(() => {
+    const refreshCareJourney = () => {
+      const next = readCareJourney();
+      setCareJourney(next);
+      setNotifications(next.notifications);
+    };
+    window.addEventListener("healthreachcare-care-journey-updated", refreshCareJourney);
+    window.addEventListener("storage", refreshCareJourney);
+    return () => {
+      window.removeEventListener("healthreachcare-care-journey-updated", refreshCareJourney);
+      window.removeEventListener("storage", refreshCareJourney);
+    };
+  }, []);
+
+  const persistCareJourney = next => {
+    const saved = writeCareJourney(next);
+    setCareJourney(saved);
+    setNotifications(saved.notifications);
+    return saved;
+  };
+
+  const sendPreviewMessage = () => {
+    try {
+      if (!selectedActivity) return;
+      const message = createBookingMessage(selectedActivity, "local-test-patient", chatDraft);
+      const current = readCareJourney();
+      persistCareJourney({ ...current, messages: [message, ...current.messages] });
+      recordCareEvent({ type: "chat_message_saved", title: "Preview message saved", message: "Saved on this device only. No provider was contacted.", bookingId: selectedActivity.id });
+      const refreshed = readCareJourney();
+      setCareJourney(refreshed);
+      setNotifications(refreshed.notifications);
+      setChatDraft("");
+      setJourneyNotice("Message saved in this browser only. The assigned provider cannot receive it until secure shared chat is connected.");
+    } catch (error) {
+      setJourneyNotice(error.message || "This conversation is unavailable.");
+    }
+  };
+
+  const submitPreviewReview = event => {
+    event.preventDefault();
+    try {
+      if (!selectedActivity) return;
+      const current = readCareJourney();
+      const review = createBookingReview(selectedActivity, reviewRating, reviewComment, current.reviews);
+      persistCareJourney({ ...current, reviews: [review, ...current.reviews] });
+      recordCareEvent({ type: "review_saved", title: "Preview review saved", message: "Your review is stored on this device only.", bookingId: selectedActivity.id });
+      const refreshed = readCareJourney();
+      setCareJourney(refreshed);
+      setNotifications(refreshed.notifications);
+      setJourneyNotice("Review saved locally in preview mode. It has not been published to a provider profile.");
+      setReviewComment("");
+    } catch (error) {
+      setJourneyNotice(error.message || "This review could not be saved.");
+    }
+  };
+
+  const toggleActivityFavourite = () => {
+    if (!selectedActivity) return;
+    const providerId = selectedActivity.providerId || selectedActivity.doctorId || selectedActivity.coordinatorId;
+    if (!providerId) {
+      setJourneyNotice("This request has no assigned provider to save yet.");
+      return;
+    }
+    try {
+      const current = readCareJourney();
+      const favourites = toggleFavourite(current.favourites, { id: providerId, name: activityProviderLabel(selectedActivity), kind: activityKind(selectedActivity) });
+      persistCareJourney({ ...current, favourites });
+      setJourneyNotice(favourites.some(item => item.id === providerId) ? "Provider saved to favourites on this device. No booking or chat access was created." : "Provider removed from favourites.");
+    } catch (error) {
+      setJourneyNotice(error.message || "Could not update favourites.");
+    }
+  };
+
+  const markNotificationAsRead = notification => {
+    const current = readCareJourney();
+    persistCareJourney({ ...current, notifications: current.notifications.map(item => item.id === notification.id ? markNotificationRead(item) : item) });
+  };
+
+  const cancelPreviewActivity = () => {
+    if (!selectedActivity) return;
+    const status = activityStatus(selectedActivity);
+    const medication = activityKind(selectedActivity) === "Medication order";
+    const allowedStatuses = medication ? ["awaiting_payment", "awaiting_pharmacy"] : ["pending", "requested", "awaiting_provider_review"];
+    if (!allowedStatuses.includes(status)) {
+      setJourneyNotice("This preview only allows cancellation before provider action. Any paid cancellation/refund policy must be configured on the server.");
+      return;
+    }
+    try {
+      if (selectedActivity.source === "workflow-test") {
+        const result = medication ? transitionTestOrder(selectedActivity.id, "cancelled") : transitionTestBooking(selectedActivity.id, "cancelled");
+        if (result?.error) throw new Error(result.error);
+        setSelectedActivity({ ...selectedActivity, ...result.value, status: "cancelled", cancellationReason: result.value?.cancellationReason || "Cancelled by patient in test preview" });
+      } else {
+        const current = readLegacyBookings();
+        const index = current.findIndex(item => item.id === selectedActivity.id);
+        if (index < 0) throw new Error("This local test request could not be found.");
+        const at = new Date().toISOString();
+        const previous = current[index];
+        const statusHistory = Array.isArray(previous.statusHistory) ? previous.statusHistory : [{ status, at: previous.createdAt || at, testOnly: true }];
+        current[index] = { ...previous, status: "cancelled", requestStatus: "cancelled", cancellationReason: "Cancelled by patient in test preview", cancellationAt: at, updatedAt: at, statusHistory: [...statusHistory, { status: "cancelled", at, testOnly: true }] };
+        localStorage.setItem(LEGACY_BOOKINGS_KEY, JSON.stringify(current));
+        window.dispatchEvent(new CustomEvent("healthreachcare-test-bookings-updated"));
+        setSelectedActivity({ ...current[index], source: "legacy-test" });
+        try { recordCareEvent({ type: "test_booking_cancelled", title: "Test request cancelled", message: "Cancelled locally in preview. No real service or refund was processed.", bookingId: selectedActivity.id, at }); } catch { /* Do not block a local cancellation on a notification failure. */ }
+      }
+      const refreshed = readCareJourney();
+      setCareJourney(refreshed);
+      setNotifications(refreshed.notifications);
+      setJourneyNotice(medication ? "Test order cancelled. If a test authorisation existed, any refund remains pending admin review; no refund is marked complete." : "Test request cancelled locally. No provider was contacted and no payment or refund was processed.");
+    } catch (error) {
+      setJourneyNotice(error.message || "Could not cancel this preview request.");
+    }
+  };
 
   const openForm = (type, extra = {}) => {
     setNotice("");
@@ -285,6 +399,7 @@ function App() {
           {canMessageBooking(selectedActivity) ? <div className="preview-chat-compose"><label htmlFor="preview-chat-message">Message</label><textarea id="preview-chat-message" rows={3} maxLength={2000} value={chatDraft} onChange={event=>setChatDraft(event.target.value)} placeholder="Write a message about this booking"/><button type="button" className="button button-primary full" onClick={sendPreviewMessage} disabled={!chatDraft.trim()}>Save preview message</button></div> : <p className="muted small">New messages unlock only after an assigned provider accepts the booking, and stop when the service ends.</p>}
         </div>}
         {["Doctor appointment","Homecare request"].includes(activityKind(selectedActivity)) && <div className="panel activity-interaction-panel"><div className="panel-heading"><div className="panel-icon"><HeartPulse/></div><div><h3>Service review</h3><p>Reviews unlock after completion</p></div></div>{careJourney.reviews.filter(review=>review.bookingId===selectedActivity.id).map(review=><div className="preview-review" key={review.id}><strong>{"★".repeat(review.rating)}{"☆".repeat(5-review.rating)} · {review.rating}/5</strong><p>{review.comment || "No written comment."}</p><small>{activityDate(review.createdAt)} · Saved in preview only</small></div>)}{canReviewBooking(selectedActivity,careJourney.reviews) ? <form onSubmit={submitPreviewReview}><label>Rating<select value={reviewRating} onChange={event=>setReviewRating(Number(event.target.value))}>{[5,4,3,2,1].map(score=><option value={score} key={score}>{score} / 5</option>)}</select></label><label>Comment (optional)<textarea rows={3} maxLength={1500} value={reviewComment} onChange={event=>setReviewComment(event.target.value)} placeholder="Share feedback about this completed service"/></label><button type="submit" className="button button-primary full">Save preview review</button></form> : careJourney.reviews.some(review=>review.bookingId===selectedActivity.id) ? <p className="muted small">A review has already been saved for this booking.</p> : <p className="muted small">A review becomes available only when the booking status is completed or delivered.</p>}</div>}
+        {["pending","requested","awaiting_provider_review","awaiting_payment","awaiting_pharmacy"].includes(activityStatus(selectedActivity)) && <button type="button" className="button button-outline full" onClick={cancelPreviewActivity}>Cancel test request/order</button>}
         {journeyNotice && <div className="inline-message"><AlertCircle size={17}/><span>{journeyNotice}</span><button type="button" className="text-button" onClick={()=>setJourneyNotice("")}>Dismiss</button></div>}
         <div className="inline-message"><ShieldCheck size={17}/><span>Test preview only. Provider, payment, pharmacy verification and driver tracking are not live. Do not enter real patient information.</span></div>
         <a className="button button-outline full" href={"mailto:support@healthreachcare.co.za?subject="+encodeURIComponent("HealthReachCare support — "+activityKind(selectedActivity))+"&body="+encodeURIComponent("Please help with request "+(selectedActivity.id||"ID unavailable")+".") }><MessageCircle size={16}/> Contact support about this request</a>
