@@ -260,13 +260,19 @@ export function TestRoleWorkspace({ role, onBack }) {
   };
 
   const actionFor = order => {
+    if (role === "driver") {
+      if (order.fulfilment !== "delivery") return <span className="test-inline-status">Pickup order · not a driver delivery</span>;
+      if (order.status === "ready_for_delivery") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "out_for_delivery")}>Start delivery</button>;
+      if (order.status === "out_for_delivery") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "delivered")}>Mark delivered</button>;
+      if (order.status === "delivered") return <span className="test-inline-status">Delivery completed</span>;
+      if (order.status === "cancelled") return <span className="test-inline-status">Order cancelled</span>;
+      return <span className="test-inline-status">Waiting for pharmacy handoff</span>;
+    }
     if (order.status === "awaiting_payment") return <span className="test-inline-status">Waiting for payment setup</span>;
     if (order.status === "awaiting_pharmacy") return <div className="test-order-actions"><button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "accepted")}>Accept order</button><button className="button button-outline" disabled={Boolean(busy)} onClick={() => updateStatus(order, "cancelled")}>Decline order</button></div>;
     if (order.status === "accepted") return <div className="test-order-actions"><button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "preparing")}>Start preparation</button><button className="button button-outline" disabled={Boolean(busy)} onClick={() => updateStatus(order, "cancelled")}>Cancel order</button></div>;
     if (order.status === "preparing") return <div className="test-order-actions"><button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, order.fulfilment === "pickup" ? "ready_for_pickup" : "ready_for_delivery")}>{order.fulfilment === "pickup" ? "Ready for pickup" : "Ready for delivery"}</button><button className="button button-outline" disabled={Boolean(busy)} onClick={() => updateStatus(order, "cancelled")}>Cancel & restock</button></div>;
-    if (role === "driver" && order.status === "ready_for_delivery") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "out_for_delivery")}>Start delivery</button>;
-    if (role === "driver" && order.status === "out_for_delivery") return <button className="button button-primary" disabled={Boolean(busy)} onClick={() => updateStatus(order, "delivered")}>Mark delivered</button>;
-    return <span className="test-inline-status">{role === "driver" ? "No delivery action" : "In progress"}</span>;
+    return <span className="test-inline-status">In progress</span>;
   };
 
   return <section className="page-content test-workspace-page">
