@@ -24,7 +24,7 @@ const activityKind = item => item.items ? "Medication order" : item.kind === "me
 const activityProviderLabel = item => {
   const homecare = item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(item.serviceType || "");
   const medication = Boolean(item.items) || item.kind === "medication";
-  if (homecare) return item.coordinatorName || item.homecareCoordinatorName || "Central homecare coordination team (preview)";
+  if (homecare) return item.coordinatorName || item.homecareCoordinatorName || item.providerName || "Central homecare coordination team (sandbox)";
   if (medication) return item.pharmacyName || item.providerName || "Pharmacy not assigned in preview";
   if (item.driverName || item.driverId) return item.driverName || "Delivery driver assigned (preview)";
   return item.doctorName || item.providerName || "Doctor not assigned in preview";
