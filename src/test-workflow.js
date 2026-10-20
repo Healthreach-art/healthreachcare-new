@@ -72,7 +72,10 @@ export function createTestOrder({ patientName, phone, address, items, fulfilment
     if (!product) throw new Error("One of the selected test items is no longer available. Return to the catalogue, refresh the stock list and try again.");
     const quantity = Math.max(1, Math.min(20, Number(line.quantity) || 1));
     if (quantity > Number(product.stock || 0)) throw new Error(`Only ${product.stock} unit(s) of ${product.name} remain in test stock.`);
-    return { productId: product.id, name: product.name, quantity, unitPrice: Number(product.price), lineTotal: Number(product.price) * quantity };
+    if (product.prescriptionRequired === true) {
+      throw new Error(`${product.name} requires a prescription. Secure prescription upload and pharmacy review are not connected yet, so this test checkout cannot accept it safely.`);
+    }
+    return { productId: product.id, name: product.name, quantity, unitPrice: Number(product.price), lineTotal: Number(product.price) * quantity, prescriptionRequired: product.prescriptionRequired === true };
   });
   if (!lines.length) throw new Error("Add at least one item before checkout.");
   const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
