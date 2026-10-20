@@ -9,6 +9,7 @@ import {
   updateWorkflow, useTestWorkflow
 } from "./test-workflow.js";
 import "./TestingPortal.css";
+import PharmacyWorkspace from "./PharmacyWorkspace.jsx";
 
 const money = value => "R" + Number(value || 0).toFixed(2);
 const dateTime = value => value ? new Date(value).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
@@ -171,6 +172,8 @@ export function TestRoleWorkspace({ role, onBack }) {
     if (result?.error) setError(result.error);
     else { setStockDrafts({}); setError(""); setNotice(`Test stock for ${product.name} saved.`); }
   };
+
+  if (role === "pharmacy") return <PharmacyWorkspace onBack={onBack} />;
 
   const actionFor = order => {
     if (order.status === "awaiting_payment") return <span className="test-inline-status">Waiting for payment setup</span>;
