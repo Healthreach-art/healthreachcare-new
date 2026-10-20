@@ -127,19 +127,67 @@ function App() {
 
   const renderHome = () => <section className="page-content">
     <div className="hero">
-      <div className="hero-copy"><div className="eyebrow light">YOUR HEALTH, MADE SIMPLER</div><h1>Welcome{user?.displayName ? ", " + user.displayName.split(" ")[0] : ""} 👋</h1><p>Your health is our priority. Let’s take care of it today.</p><button className="button button-white" onClick={()=>setPage("doctor-booking")}>Book a doctor <ArrowRight size={17}/></button></div>
+      <div className="hero-copy">
+        <div className="eyebrow light">YOUR HEALTH, MADE SIMPLER</div>
+        <h1>Welcome{user?.displayName ? ", " + user.displayName.split(" ")[0] : ""} 👋</h1>
+        <p>Your health is our priority. Let’s take care of it today.</p>
+        <button className="button button-white" onClick={()=>setPage("doctor-booking")}>Book a doctor <ArrowRight size={17}/></button>
+        <div className="hero-address"><MapPin size={16}/><span>Delivery location</span><strong>Set your address when ordering</strong></div>
+      </div>
       <div className="hero-art"><div className="hero-circle"><HeartPulse size={66}/></div><span className="hero-dot dot-one"/><span className="hero-dot dot-two"/></div>
     </div>
     {notice && <div className="notice"><AlertCircle size={18}/><span>{notice}</span><button aria-label="Dismiss message" onClick={()=>setNotice("")}><X size={17}/></button></div>}
     <div className="section-heading"><div><div className="eyebrow">HEALTHCARE, ALL IN ONE PLACE</div><h2>How can we help you?</h2></div><span className="section-note">Choose a service to get started</span></div>
     <div className="service-grid">
-      <button className="service-card" onClick={()=>setPage("doctor-booking")}><span className="service-icon green"><Stethoscope/></span><strong>Book a doctor</strong><span>Find care and choose a time</span><ChevronRight className="service-arrow"/></button>
-      <button className="service-card" onClick={()=>setPage("medicines")}><span className="service-icon blue"><Pill/></span><strong>Order medication</strong><span>Get your medication delivered</span><ChevronRight className="service-arrow"/></button>
-      <button className="service-card" onClick={()=>setPage("homecare-booking")}><span className="service-icon lilac"><House/></span><strong>Request home care</strong><span>Arrange care in your home</span><ChevronRight className="service-arrow"/></button>
-      <button className="service-card" onClick={()=>openForm("prescription")}><span className="service-icon amber"><Upload/></span><strong>Upload prescription</strong><span>Prepare a prescription request</span><ChevronRight className="service-arrow"/></button>
+      <button className="service-card" onClick={()=>setPage("medicines")}><span className="service-icon green"><Pill/></span><strong>Order Medication</strong><span>Get your prescriptions filled and delivered to your location</span><ChevronRight className="service-arrow"/></button>
+      <button className="service-card" onClick={()=>setPage("doctor-booking")}><span className="service-icon blue"><CalendarDays/></span><strong>Book Doctor Appointment</strong><span>Find a doctor and request a consultation</span><ChevronRight className="service-arrow"/></button>
+      <button className="service-card" onClick={()=>setPage("homecare-booking")}><span className="service-icon lilac"><House/></span><strong>Request Homecare Services</strong><span>Arrange professional care in your home</span><ChevronRight className="service-arrow"/></button>
+      <button className="service-card" onClick={()=>openForm("prescription")}><span className="service-icon amber"><Upload/></span><strong>View Prescriptions</strong><span>Prepare and manage prescription requests</span><ChevronRight className="service-arrow"/></button>
     </div>
-    <div className="section-heading compact"><div><div className="eyebrow">YOUR CARE JOURNEY</div><h2>Care you can count on</h2></div></div>
-    <div className="trust-grid"><div><ShieldCheck/><strong>Verified professionals</strong><p>Practitioner listings are filtered for verification.</p></div><div><Clock3/><strong>Convenient access</strong><p>Explore care services from one place.</p></div><div><HeartPulse/><strong>Care around you</strong><p>Designed for patients and communities across South Africa.</p></div></div>
+
+    <div className="dashboard-panel">
+      <div className="dashboard-panel-heading">
+        <span className="dashboard-panel-icon reminder-icon"><Bell size={20}/></span>
+        <div><div className="eyebrow">STAY ON SCHEDULE</div><h2>Medication Reminders</h2><p>Keep track of medicines you need to take.</p></div>
+      </div>
+      <div className="dashboard-empty">
+        <CalendarDays size={25}/>
+        <div><strong>No reminders scheduled yet</strong><p>Your medication reminders will appear here when you set them up.</p></div>
+      </div>
+    </div>
+
+    <div className="dashboard-panel">
+      <div className="dashboard-panel-heading tracker-heading">
+        <span className="dashboard-panel-icon tracker-icon"><Truck size={20}/></span>
+        <div><div className="eyebrow">ORDER UPDATES</div><h2>Delivery Tracker</h2><p>Follow your medication order from pharmacy to your door.</p></div>
+        <span className="status-pill">No active order</span>
+      </div>
+      <div className="tracker-layout">
+        <div className="tracker-timeline">
+          <div className="timeline-step"><span className="timeline-dot"><CheckCircle2 size={17}/></span><div><strong>Order placed</strong><p>We’ll show your order progress here.</p></div></div>
+          <div className="timeline-step"><span className="timeline-dot muted-dot"><Pill size={16}/></span><div><strong>Pharmacy preparing</strong><p>Waiting for an order to track.</p></div></div>
+          <div className="timeline-step"><span className="timeline-dot muted-dot"><Truck size={16}/></span><div><strong>Out for delivery</strong><p>Driver and delivery updates appear here.</p></div></div>
+          <div className="timeline-step"><span className="timeline-dot muted-dot"><House size={16}/></span><div><strong>Delivered</strong><p>Delivery completion will be shown here.</p></div></div>
+        </div>
+        <div className="tracker-map-placeholder">
+          <MapPin size={30}/>
+          <strong>Delivery map</strong>
+          <p>A delivery map will appear when there is an active order with confirmed pickup and delivery locations.</p>
+        </div>
+      </div>
+    </div>
+
+    <div className="dashboard-panel">
+      <div className="dashboard-panel-heading recent-heading">
+        <span className="dashboard-panel-icon recent-icon"><ClipboardList size={20}/></span>
+        <div><div className="eyebrow">YOUR ORDER HISTORY</div><h2>Recent Orders</h2><p>Review your latest medication orders and their status.</p></div>
+        <button className="text-button" onClick={()=>setPage("medicines")}>Order medication <ArrowRight size={15}/></button>
+      </div>
+      <div className="dashboard-empty recent-empty">
+        <Pill size={25}/>
+        <div><strong>No recent orders yet</strong><p>Your confirmed orders will appear here with the pharmacy, date, status and total.</p></div>
+      </div>
+    </div>
   </section>;
 
   const renderActivities = () => <section className="page-content"><div className="eyebrow">YOUR HEALTH JOURNEY</div><h1>Activities</h1><p className="lead">Keep track of updates related to your care.</p><div className="panel"><div className="panel-heading"><div className="panel-icon"><Bell/></div><div><h2>Notifications</h2><p>Updates from your HealthReachCare account</p></div></div>{notificationError ? <div className="inline-message"><AlertCircle size={18}/><span>{notificationError}</span></div> : notifications.length ? notifications.map(n=><div className="notification-item" key={n.id}><span className="notification-dot"/><div><strong>{n.title || n.subject || "HealthReachCare update"}</strong><p>{n.message || n.body || "You have a new update."}</p>{n.createdAt?.toDate && <small>{n.createdAt.toDate().toLocaleString()}</small>}</div></div>) : <div className="empty-state"><Bell size={26}/><h3>No notifications yet</h3><p>When there are updates to your appointments, orders or requests, they will appear here.</p></div>}</div></section>;
