@@ -42,7 +42,13 @@ export function ensureDemoDelivery() {
 /** Reset only driver-demo records; preserve all unrelated test work and inventory. */
 export function resetDemoData() {
   const r=updateWorkflow(d=>{
-    const ids=new Set(d.orders.filter(isDemo).map(o=>o.id));
+    const demoOrders=d.orders.filter(isDemo);
+    const ids=new Set(demoOrders.map(o=>o.id));
+    for(const order of demoOrders){
+      if(order.stockDeducted&&!order.stockRestocked){
+        for(const line of order.items||[]){const product=d.inventory.find(p=>p.id===line.productId);if(product)product.stock=Number(product.stock||0)+Number(line.quantity||0);}
+      }
+    }
     d.orders=d.orders.filter(o=>!isDemo(o));
     d.payments=d.payments.filter(p=>!ids.has(p.orderId)&&!ids.has(p.id));
     return {value:makeSeed(d)};
