@@ -40,7 +40,7 @@ const DEMO_ACCESS_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_D
 export function TestingAuth({ onOpenRole, onBack }) {
   const [showDemoNotice, setShowDemoNotice] = useState(false);
   return <main className="test-landing test-auth-page">
-    <header className="test-landing-header"><button className="test-auth-brand-button" onClick={onBack}><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong><small>Better access. Healthier communities.</small></div></div></button><span className="test-open-chip"><span/> ACCOUNT ACCESS</span></header>
+    <header className="test-landing-header"><button className="test-auth-brand-button" onClick={onBack}><div className="test-brand"><span><HeartPulse size={24}/></span><div><strong>HealthReachCare</strong></div></div></button><span className="test-open-chip"><span/> ACCOUNT ACCESS</span></header>
     <button className="test-back-link" onClick={onBack}><ArrowLeft size={16}/> Back to landing page</button>
     <section className="test-auth-layout">
       <div className="test-auth-intro"><div className="eyebrow">WELCOME BACK</div><h1>Sign in to HealthReachCare</h1><p>Access your healthcare workspace securely. Patient, doctor, pharmacy, driver and admin access will use verified accounts and role permissions in production.</p><div className="test-auth-security"><ShieldCheck size={20}/><div><strong>Account security is not switched on yet</strong><span>This build is still in testing. Real sign-in and account creation are not connected; no credentials are accepted or saved.</span></div></div></div>
