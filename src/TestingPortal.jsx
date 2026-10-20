@@ -139,6 +139,8 @@ function OrderCard({ order }) {
   return <article className="test-order-card"><div className="test-order-card-head"><div><span className="test-product-tag">TEST ORDER</span><h3>{order.id}</h3><p>{dateTime(order.createdAt)}</p></div><span className={"test-status status-" + order.status}>{statusLabel(order.status)}</span></div><div className="test-order-items">{order.items.map((item, index) => <span key={item.productId || index}>{item.quantity} × {item.name}</span>)}</div><div className="test-order-card-foot"><span>Payment: <strong>{statusLabel(order.paymentStatus)}</strong></span><strong>{money(order.total)}</strong></div></article>;
 }
 
+const isHomecareRequest = item => item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(String(item.serviceType || item.service || ""));
+
 export function TestRoleWorkspace({ role, onBack }) {
   const workflow = useTestWorkflow();
   const [notice, setNotice] = useState("");
@@ -147,7 +149,7 @@ export function TestRoleWorkspace({ role, onBack }) {
   const [stockDrafts, setStockDrafts] = useState({});
   const orders = workflow.orders.filter(order => order.testOnly);
   const pendingPayments = workflow.payments.filter(payment => payment.testOnly);
-  const bookings = workflow.bookings.filter(item => item.testOnly && (role === "admin" || (role === "doctor" ? !["homecare"].includes(item.kind || item.type) && !/home.?care/i.test(String(item.serviceType || item.service || "")) : role === "homecare" ? (item.kind === "homecare" || item.type === "homecare" || /home.?care/i.test(String(item.serviceType || item.service || "")) : false)));
+  const bookings = workflow.bookings.filter(item => item.testOnly && (role === "admin" || (role === "doctor" ? !isHomecareRequest(item) : role === "homecare" ? isHomecareRequest(item) : false)));
   const meta = roles.find(item => item.id === role) || roles[0];
   const Icon = meta.icon;
 
