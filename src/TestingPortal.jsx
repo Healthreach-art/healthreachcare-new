@@ -213,12 +213,24 @@ export function TestRoleWorkspace({ role, onBack }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [stockDrafts, setStockDrafts] = useState({});
+  const [orderMessageDrafts, setOrderMessageDrafts] = useState({});
+  const [orderMessageErrors, setOrderMessageErrors] = useState({});
   const orders = workflow.orders.filter(order => order.testOnly);
   const pendingPayments = workflow.payments.filter(payment => payment.testOnly);
   const bookings = workflow.bookings.filter(item => item.testOnly);
   const prescriptions = (workflow.prescriptions || []).filter(item => item.testOnly);
   const meta = roles.find(item => item.id === role) || roles[0];
   const Icon = meta.icon;
+
+  const sendPharmacyMessage = order => {
+    const body = String(orderMessageDrafts[order.id] || "").trim();
+    const result = sendTestMessage({ requestId: order.id, requestType: "order", senderRole: "pharmacy", senderName: "Pharmacy workspace", body });
+    if (result?.error) { setOrderMessageErrors(current=>({...current,[order.id]:result.error})); return; }
+    setOrderMessageDrafts(current=>({...current,[order.id]:""}));
+    setOrderMessageErrors(current=>({...current,[order.id]:""}));
+    setNotice("Message saved to this test order's conversation. No SMS, email or push notification was sent.");
+    workflow.refresh();
+  };
 
   const updateStatus = (order, nextStatus) => {
     setBusy(order.id); setError(""); setNotice("");
@@ -267,7 +279,7 @@ export function TestRoleWorkspace({ role, onBack }) {
       <div className="test-metric-grid"><Metric icon={<ClipboardList/>} label="All orders" value={orders.length}/><Metric icon={<Clock3/>} label="Awaiting pharmacy" value={orders.filter(order => order.status === "awaiting_pharmacy").length}/><Metric icon={<Package/>} label="Preparing" value={orders.filter(order => ["accepted","preparing"].includes(order.status)).length}/><Metric icon={<Truck/>} label="Ready for handoff" value={orders.filter(order => ["ready_for_delivery","ready_for_pickup","out_for_delivery"].includes(order.status)).length}/><Metric icon={<FileText/>} label="Prescription reviews" value={prescriptions.filter(item => item.status === "awaiting_pharmacy_review").length}/></div>
       <div className="test-surface"><div className="test-section-head"><div><h2>Medicine catalogue and stock</h2><p>Stock changes update the shared patient catalogue and are deducted once when pharmacy preparation begins.</p></div><button className="button button-outline" onClick={workflow.refresh}><RefreshCw size={15}/> Refresh</button></div><div className="test-inventory-table">{workflow.inventory.map(product => <div className="test-inventory-row" key={product.id}><div><strong>{product.name}</strong><small>{product.category} · {money(product.price)} test price · {product.prescriptionRequired ? "Prescription required" : "No prescription flag"}</small></div><label>Stock<input type="number" min="0" max="10000" step="1" value={stockDrafts[product.id] ?? product.stock} onChange={e => setStockDrafts({ ...stockDrafts, [product.id]: e.target.value })}/></label><label className="test-prescription-toggle"><input type="checkbox" checked={product.prescriptionRequired === true} onChange={e => { const result = updateWorkflow(draft => { const item = draft.inventory.find(entry => entry.id === product.id); if (!item) return { error: "This test item no longer exists." }; item.prescriptionRequired = e.target.checked; return { value: item }; }); if (result?.error) setError(result.error); else setNotice(e.target.checked ? "Prescription requirement enabled for this catalogue item. Checkout will remain blocked until secure prescription verification is connected." : "Prescription requirement disabled for this catalogue item."); }}/><span>Prescription required</span></label><button className="button button-outline" onClick={() => saveStock(product)}>Save stock</button></div>)}</div></div>
       <div className="test-surface"><div className="test-section-head"><div><h2>Prescription review queue</h2><p>Review simulated intake metadata. File contents are not stored or visible to pharmacy staff in this preview.</p></div><span className="test-open-chip">SANDBOX</span></div>{prescriptions.length ? prescriptions.map(item=><article className="test-order-card" key={item.id}><div className="test-order-card-head"><div><span className="test-product-tag">PRESCRIPTION INTAKE</span><h3>{item.id}</h3><p>{item.patientName} · {dateTime(item.createdAt)}</p></div><span className={"test-status status-" + item.status}>{statusLabel(item.status)}</span></div><div className="test-booking-summary"><strong>File metadata:</strong> {item.fileName} · {item.fileType} · {Math.max(1,Math.round(item.fileSize/1024))} KB</div><small>Metadata only — no file uploaded or stored. Never use this sample approval for real dispensing.</small>{item.notes&&<p>{item.notes}</p>}{item.reviewNote&&<p><strong>Review note:</strong> {item.reviewNote}</p>}{["awaiting_pharmacy_review","needs_information"].includes(item.status)&&<div className="test-order-actions"><button className="button button-primary" onClick={()=>reviewPrescription(item,"approved_for_test")}>Complete sample review</button><button className="button button-outline" onClick={()=>reviewPrescription(item,"needs_information")}>Request clearer sample</button><button className="button button-outline" onClick={()=>reviewPrescription(item,"rejected")}>Reject sample</button></div>}</article>) : <Empty title="No prescription requests" description="Use Patient → Upload Prescription to create a sample intake. The request will appear here in the same browser."/>}</div>
-      <OrderList title="Patient orders" orders={orders} actionFor={actionFor}/>
+      <OrderList title="Patient orders" orders={orders} actionFor={actionFor} messages={workflow.messages} messageDrafts={orderMessageDrafts} messageErrors={orderMessageErrors} onMessageDraftChange={(id,value)=>{setOrderMessageDrafts(current=>({...current,[id]:value}));setOrderMessageErrors(current=>({...current,[id]:""}));}} onSendMessage={sendPharmacyMessage}/>
     </>}
     {role === "driver" && <DriverDashboard workflow={workflow} orders={orders} refresh={workflow.refresh} />}
     {role === "doctor" && <>
@@ -395,7 +407,7 @@ function DriverDashboard({ workflow, orders, refresh }) {
   </div>;
 }
 
-function OrderList({ title, orders, actionFor }) {
+function OrderList({ title, orders, actionFor, messages = [], messageDrafts = {}, messageErrors = {}, onMessageDraftChange, onSendMessage }) {
   return (
     <div className="test-surface">
       <div className="test-section-head">
@@ -430,6 +442,7 @@ function OrderList({ title, orders, actionFor }) {
                 <strong>{money(order.total)}</strong>
               </div>
               <div className="test-order-actions">{actionFor(order)}</div>
+              {!["cancelled","delivered"].includes(order.status) && <div className="provider-message-thread"><div className="provider-message-title"><MessageCircle size={17}/><strong>Patient conversation</strong><span>{messages.filter(message=>message.requestId===order.id&&message.requestType==="order").length} messages</span></div><div className="provider-message-list">{messages.filter(message=>message.requestId===order.id&&message.requestType==="order").length ? messages.filter(message=>message.requestId===order.id&&message.requestType==="order").map(message=><article key={message.id} className={"provider-message-bubble"+(message.senderRole==="pharmacy"?" provider-message-own":"")}><div><strong>{message.senderName}</strong><small>{dateTime(message.createdAt)}</small></div><p>{message.body}</p></article>):<p className="provider-message-empty">No messages yet. Send an order-specific update to the patient.</p>}</div><label>Reply to patient<textarea rows={2} maxLength={2000} value={messageDrafts[order.id]||""} onChange={event=>onMessageDraftChange?.(order.id,event.target.value)} placeholder="Ask about delivery details or share an order update."/></label>{messageErrors[order.id]&&<p className="provider-message-error">{messageErrors[order.id]}</p>}<button type="button" className="button button-outline" onClick={()=>onSendMessage?.(order)}><Send size={15}/> Send reply</button><small>Local test conversation only. No external message is sent.</small></div>}
             </article>
           ))}
         </div>
