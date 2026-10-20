@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function admin() {
+      return signedIn() &&
+        (get(/databases/$(database)/documents/user_roles/$(uid())).data.role == 'admin' ||
+         get(/databases/$(database)/documents/user_roles/$(uid())).data.role == 'administrator');
+    }
+    function roleData() {
+      return signedIn()
+        ? get(/databases/$(database)/documents/user_roles/$(uid())).data
+        : {};
+    }
+    function doctorAssigned(data) {
+      return signedIn() &&
+        (data.doctorId == uid() ||
+         (roleData().providerId != null && data.doctorId == roleData().providerId) ||
+         (roleData().profileId != null && data.doctorId == roleData().profileId));
+    }
+    function homecareAssigned(data) {
+      return signedIn() && data.providerUid == uid();
+    }
+    function patientCreate() {
+      return signedIn() &&
+        request.resource.data.patientUid == uid() &&
+        request.resource.data.requestStatus == 'pending' &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.paymentStatus == 'not_started' &&
+        !('acceptedBy' in request.resource.data) &&
+        !('acceptedAt' in request.resource.data) &&
+        !('paidAt' in request.resource.data) &&
+        !('paymentVerifiedAt' in request.resource.data);
+    }
+
+    match /doctors/{doctorId} {
+      allow read: if admin() ||
+        (resource.data.isActive == true && resource.data.isVerified == true);
+      allow write: if admin();
+    }
+
+    match /homecareProviders/{providerId} {
+      allow read: if admin() ||
+        (resource.data.status == 'approved' && resource.data.isVerified == true);
+      allow write: if admin();
+    }
+
+    match /appointments/{appointmentId} {
+      allow create: if patientCreate() &&
+        request.resource.data.doctorId is string &&
+        exists(/databases/$(database)/documents/doctors/$(request.resource.data.doctorId)) &&
+        get(/databases/$(database)/documents/doctors/$(request.resource.data.doctorId)).data.isActive == true &&
+        get(/databases/$(database)/documents/doctors/$(request.resource.data.doctorId)).data.isVerified == true;
+      allow read: if admin() ||
+        (signedIn() && resource.data.patientUid == uid()) ||
+        doctorAssigned(resource.data);
+      allow update: if admin() ||
+        (doctorAssigned(resource.data) &&
+         resource.data.requestStatus == 'pending' &&
+         request.resource.data.requestStatus in ['accepted', 'declined'] &&
+         request.resource.data.status == request.resource.data.requestStatus &&
+         request.resource.data.acceptedBy == (request.resource.data.requestStatus == 'accepted' ? uid() : null) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'status', 'requestStatus', 'acceptedBy', 'acceptedAt',
+           'declinedBy', 'declinedAt', 'updatedAt', 'paymentStatus'
+         ]));
+      allow delete: if admin();
+    }
+
+    match /homecareRequests/{requestId} {
+      allow create: if patientCreate() &&
+        request.resource.data.address is string &&
+        request.resource.data.address.size() > 0 &&
+        request.resource.data.providerUid == null &&
+        request.resource.data.totalAmountZar == null &&
+        request.resource.data.quotedHourlyRateZar == null;
+      allow read: if admin() ||
+        (signedIn() && resource.data.patientUid == uid()) ||
+        homecareAssigned(resource.data);
+      allow update: if admin() ||
+        (homecareAssigned(resource.data) &&
+         resource.data.requestStatus == 'pending' &&
+         request.resource.data.requestStatus in ['accepted', 'declined'] &&
+         request.resource.data.status == request.resource.data.requestStatus &&
+         request.resource.data.acceptedBy == (request.resource.data.requestStatus == 'accepted' ? uid() : null) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'status', 'requestStatus', 'acceptedBy', 'acceptedAt',
+           'declinedBy', 'declinedAt', 'updatedAt', 'paymentStatus'
+         ]));
+      allow delete: if admin();
+    }
+
+    match /user_roles/{userId} {
+      allow read: if signedIn() && (userId == uid() || admin());
+      allow write: if admin();
+    }
+    match /profiles/{userId} {
+      allow read: if signedIn() && (userId == uid() || admin());
+      allow write: if admin();
+    }
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if signedIn() && userId == uid();
+      allow create: if signedIn() &&
+        (userId == uid() || admin());
+      allow update, delete: if signedIn() && userId == uid();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
