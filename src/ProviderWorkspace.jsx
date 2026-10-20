@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, CreditCard, House, ShieldCheck, Stethoscope, XCircle } from "lucide-react";
+import { recordCareEvent } from "./care-journey.js";
 
 const STORAGE_KEY = "healthreachcare-test-bookings";
 const readRequests = () => {
@@ -35,12 +36,29 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
       const expectedPrefix = role === "doctor" ? "demo-doctor-provider" : "demo-homecare-provider";
       const target = current.findIndex(row => row.id === item.id && String(row.providerId || "").startsWith(expectedPrefix) && row.kind === (role === "doctor" ? "appointment" : "homecare"));
       if (target < 0) throw new Error("This test request is no longer available.");
-      if (!["pending", "requested"].includes(String(current[target].status || current[target].requestStatus).toLowerCase())) throw new Error("This request has already been actioned.");
-      current[target] = { ...current[target], status, requestStatus: status, providerResponseAt: new Date().toISOString() };
+      const existing = current[target];
+      const previousStatus = String(existing.status || existing.requestStatus || "pending").toLowerCase();
+      const allowed = { pending: ["accepted", "declined"], requested: ["accepted", "declined"], accepted: ["in_progress"], in_progress: ["completed"] };
+      if (!(allowed[previousStatus] || []).includes(status)) throw new Error("This request cannot move from " + previousStatus + " to " + status + ".");
+      if (role === "homecare" && status === "accepted" && !["paid", "test_authorized"].includes(String(existing.paymentStatus || "").toLowerCase())) {
+        throw new Error("Homecare cannot be accepted until payment is verified. The preview has no payment provider, so no payment can be verified.");
+      }
+      const at = new Date().toISOString();
+      const statusHistory = Array.isArray(existing.statusHistory) ? existing.statusHistory : [{ status: previousStatus, at: existing.createdAt || at, testOnly: true }];
+      current[target] = { ...existing, status, requestStatus: status, providerResponseAt: at, updatedAt: at, statusHistory: [...statusHistory, { status, at, testOnly: true }] };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
       window.dispatchEvent(new CustomEvent("healthreachcare-test-bookings-updated"));
+      try {
+        const eventMeta = {
+          accepted: ["provider_accepted", "Test provider accepted request", "Acceptance is local test data only."],
+          declined: ["provider_declined", "Test provider declined request", "Decline is local test data only."],
+          in_progress: ["service_started", "Test service started", "Progress is local test data only."],
+          completed: ["service_completed", "Test service completed", "Completion is local test data only."]
+        }[status];
+        if (eventMeta) recordCareEvent({ type: eventMeta[0], title: eventMeta[1], message: eventMeta[2], bookingId: existing.id, at });
+      } catch { /* A preview notification must not block a local test status update. */ }
       setRequests(current);
-      setNotice(status === "accepted" ? "Test request accepted. The patient dashboard can see this status in this browser. No real booking or payment is confirmed." : "Test request declined. No real provider was contacted.");
+      setNotice(status === "accepted" ? "Test request accepted. No real booking or payment is confirmed." : status === "declined" ? "Test request declined. No real provider was contacted." : status === "in_progress" ? "Test service marked in progress. No real service has started." : "Test service marked completed. This does not confirm real-world care delivery.");
     } catch (e) { setError(e.message || "Could not update this test request."); }
     finally { setBusyId(""); }
   };
@@ -60,7 +78,7 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
     </div>
     {notice && <div className="inline-message"><CheckCircle2 size={18}/><span>{notice}</span></div>}
     {error && <div className="state-card state-error"><AlertCircle/><div><strong>Could not update</strong><p>{error}</p></div></div>}
-    <div className="provider-toolbar"><h2>Incoming requests</h2><select aria-label="Filter requests" value={filter} onChange={e => setFilter(e.target.value)}><option value="pending">Awaiting review</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="all">All requests</option></select></div>
+    <div className="provider-toolbar"><h2>Incoming requests</h2><select aria-label="Filter requests" value={filter} onChange={e => setFilter(e.target.value)}><option value="pending">Awaiting review</option><option value="accepted">Accepted</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="declined">Declined</option><option value="all">All requests</option></select></div>
     {visible.length ? <div className="provider-request-list">{visible.map(item => {
       const status = String(item.status || item.requestStatus || "pending").toLowerCase();
       const pending = ["pending", "requested"].includes(status);
@@ -74,8 +92,11 @@ export default function ProviderWorkspace({ role = "doctor", onBack }) {
           <p><strong>Fixed service price:</strong> {role === "homecare" ? (typeof item.servicePrice === "number" ? "R" + item.servicePrice.toFixed(2) : "Not configured in preview") : (typeof item.consultationFee === "number" ? "Illustrative R" + item.consultationFee.toFixed(2) : "Not configured in preview")}</p>
           <p><strong>Payment:</strong> Not connected — this test portal never collects payment.</p>
         </div>
-        {pending && <div className="provider-request-actions"><button className="button button-primary" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "accepted")}>{busyId === item.id ? "Saving…" : <><CheckCircle2 size={16}/> Accept test request</>}</button><button className="button button-outline" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "declined")}><XCircle size={16}/> Decline</button></div>}
-        {status === "accepted" && <div className="inline-message"><CreditCard size={17}/><span>Accepted in test mode only. No payment was taken and no real appointment/service is confirmed.</span></div>}
+        {pending && <div className="provider-request-actions"><button className="button button-primary" disabled={Boolean(busyId) || (role === "homecare" && !["paid", "test_authorized"].includes(String(item.paymentStatus || "").toLowerCase()))} onClick={() => updateRequest(item, "accepted")}>{busyId === item.id ? "Saving…" : <><CheckCircle2 size={16}/> Accept test request</>}</button><button className="button button-outline" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "declined")}><XCircle size={16}/> Decline</button></div>}
+        {pending && role === "homecare" && !["paid", "test_authorized"].includes(String(item.paymentStatus || "").toLowerCase()) && <div className="inline-message"><CreditCard size={17}/><span>Payment must be verified before acceptance. The preview gateway is disconnected, so this request cannot be accepted.</span></div>}
+        {status === "accepted" && <div className="provider-request-actions"><div className="inline-message"><CreditCard size={17}/><span>Accepted in test mode only. No payment was taken and no real appointment/service is confirmed.</span></div><button className="button button-primary" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "in_progress")}>Start test service</button></div>}
+        {status === "in_progress" && <button className="button button-primary" disabled={Boolean(busyId)} onClick={() => updateRequest(item, "completed")}>Mark test service completed</button>}
+        {status === "completed" && <div className="inline-message"><CheckCircle2 size={17}/><span>Completed in local preview only. Patient reviews can be tested for this status.</span></div>}
       </article>;
     })}</div> : <div className="empty-state"><ClipboardFallback/><h3>No {filter === "pending" ? "pending " : ""}requests yet</h3><p>Submit a matching test booking from the patient dashboard. It will appear here when testing in the same browser.</p></div>}
     <button className="button button-outline" onClick={onBack}>Return to patient site</button>
