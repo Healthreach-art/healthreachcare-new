@@ -1,216 +1,121 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  addDoc, collection, getDocs, query, serverTimestamp, where
-} from "firebase/firestore";
+import { useState } from "react";
 import {
   ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, Clock3,
   Heart, MapPin, ShieldCheck, Stethoscope, House, CreditCard, ClipboardCheck,
-  UserRound, AlertCircle, RefreshCw
+  UserRound, Sparkles, Star, AlertCircle
 } from "lucide-react";
-import { db } from "./firebase";
+import { saveTestBooking } from "./test-workflow.js";
 import "./BookingFlow.css";
 
-const doctorModes = ["In-person", "Video", "Phone"];
-const times = ["08:00", "09:00", "10:00", "11:00", "12:00", "14:00", "16:00", "18:00"];
-const services = [
-  { id: "personal_care", title: "Personal care", description: "Daily living and personal support" },
-  { id: "elderly_care", title: "Elderly care", description: "Companionship and everyday support" },
-  { id: "post_surgery", title: "Post-surgery care", description: "Recovery support at home" },
-  { id: "mobility", title: "Mobility assistance", description: "Safe movement and transfers" },
-  { id: "medication_support", title: "Medication support", description: "Help following a prescribed medicine schedule" },
-  { id: "specialised_care", title: "Specialised care", description: "Care needs requiring a suitable qualified provider" }
+const doctors = [
+  { id: "test-doc-1", name: "Dr. Amara Ndlovu", specialty: "General Practitioner", location: "Cape Town (sample)", fee: 450, initials: "AN" },
+  { id: "test-doc-2", name: "Dr. Liam Jacobs", specialty: "Family Medicine", location: "Cape Town (sample)", fee: 380, initials: "LJ" },
+  { id: "test-doc-3", name: "Dr. Zanele Mokoena", specialty: "Women's Health", location: "Online (sample)", fee: 520, initials: "ZM" }
 ];
-
-const localDate = () => {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-};
-
-const displayName = doctor => doctor.fullName || doctor.full_name || doctor.name || "Verified doctor";
-const displaySpecialty = doctor => doctor.specialty || doctor.specialisation || "General practitioner";
-const displayLocation = doctor => doctor.city || doctor.location || doctor.address || "Location not listed";
-const feeLabel = doctor => Number.isFinite(Number(doctor.consultationFee ?? doctor.consultation_fee))
-  ? "R" + Number(doctor.consultationFee ?? doctor.consultation_fee).toFixed(2)
-  : "Fee confirmed by provider";
+const services = [
+  { id: "nursing", title: "Nursing care", description: "Clinical support and nursing visits" },
+  { id: "personal", title: "Personal care", description: "Help with daily routines and personal needs" },
+  { id: "post-op", title: "Post-operative care", description: "Support while recovering after a procedure" },
+  { id: "elder", title: "Elder care", description: "Practical support and wellbeing checks" },
+  { id: "wound", title: "Wound care", description: "Dressing changes and wound support" },
+  { id: "companionship", title: "Companionship", description: "Friendly visits and everyday support" }
+];
+const times = ["08:00", "09:30", "11:00", "13:00", "14:30", "16:00"];
+const money = value => "R" + Number(value || 0).toFixed(2);
+const localDate = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 
 export default function BookingFlow({ type, onBack, user }) {
   const homecare = type === "homecare";
+  const steps = homecare ? ["Service", "Details", "Submit", "Quote", "Pay", "Track", "Favourite"] : ["Choose", "Compare", "Schedule", "Pay", "Confirm", "Care", "Favourite"];
   const [step, setStep] = useState(0);
-  const [doctors, setDoctors] = useState([]);
-  const [providers, setProviders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [selectedDoctor, setSelectedDoctor] = useState(doctors[0]);
   const [selectedService, setSelectedService] = useState(services[0]);
   const [consultation, setConsultation] = useState("In-person");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [duration, setDuration] = useState("2");
+  const [duration, setDuration] = useState("2 hours");
   const [address, setAddress] = useState("");
-  const [name, setName] = useState(user?.displayName || "");
+  const [name, setName] = useState(user?.displayName || "Test Patient");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(null);
+  const [favourite, setFavourite] = useState(false);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const minimumDate = localDate();
+  const [notice, setNotice] = useState("");
+  const stepTitle = homecare
+    ? ["Choose home care", "Tell us what you need", "Review your request", "Sample provider quote", "Payment preview", "Track your request", "Save a favourite"][step]
+    : ["Choose your doctor", "Compare practitioners", "Choose a date and time", "Payment preview", "Confirm your request", "Your care journey", "Save a favourite"][step];
 
-  const steps = homecare
-    ? ["Service", "Visit details", "Review", "Request status"]
-    : ["Choose doctor", "Consultation", "Schedule", "Review", "Request status"];
-  const stepTitle = useMemo(() => homecare
-    ? ["Choose home care", "Tell us about the visit", "Review your request", "Request status"][step]
-    : ["Find a verified doctor", "Choose consultation type", "Schedule your appointment", "Review your request", "Request status"][step],
-  [homecare, step]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadProviders() {
-      setLoading(true);
-      setLoadError("");
-      try {
-        if (!db) throw new Error("Firebase is not configured. Add the VITE_FIREBASE_* settings before using live booking.");
-        if (homecare) {
-          const snap = await getDocs(query(collection(db, "homecareProviders"), where("status", "==", "approved"), where("isVerified", "==", true)));
-          if (!cancelled) setProviders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        } else {
-          const snap = await getDocs(query(collection(db, "doctors"), where("isActive", "==", true), where("isVerified", "==", true)));
-          if (!cancelled) {
-            const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setDoctors(rows);
-            setSelectedDoctor(current => current || rows[0] || null);
-          }
-        }
-      } catch (e) {
-        if (!cancelled) setLoadError(e?.message || "We could not load approved providers. Please try again.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void loadProviders();
-    return () => { cancelled = true; };
-  }, [homecare]);
-
-  const matchingProviders = providers.filter(p => {
-    const listed = Array.isArray(p.services) ? p.services : Array.isArray(p.serviceTypes) ? p.serviceTypes : [];
-    return listed.some(s => String(typeof s === "string" ? s : s?.id || s?.name || "").toLowerCase()
-      .replaceAll(" ", "_") === selectedService.id || String(typeof s === "string" ? s : s?.name || "").toLowerCase() === selectedService.title.toLowerCase());
-  });
-  const durationHours = Number(duration);
-  const availableRates = matchingProviders.map(p => Number(p.hourlyRateZar ?? p.hourlyRate ?? p.hourly_rate)).filter(n => Number.isFinite(n) && n > 0);
-  const lowestRate = availableRates.length ? Math.min(...availableRates) : null;
-  const estimatedTotal = lowestRate == null || !Number.isFinite(durationHours) ? null : lowestRate * durationHours;
-
-  const submitRequest = async () => {
-    setError("");
-    if (!user?.uid) { setError("Please sign in from Account before submitting a booking request."); return; }
-    if (!db) { setError("Firebase is not configured. No request was sent."); return; }
-    if (!name.trim() || !phone.trim() || !date || !time) { setError("Complete your name, phone number, preferred date and time."); return; }
-    if (homecare && !address.trim()) { setError("Enter the full address where care is needed."); return; }
-    if (!homecare && !selectedDoctor) { setError("There are no verified doctors available to select."); return; }
-    setBusy(true);
-    try {
-      const common = {
-        patientUid: user.uid,
-        patientName: name.trim(),
-        patientEmail: user.email || "",
-        phone: phone.trim(),
-        preferredAt: new Date(date + "T" + time + ":00").toISOString(),
-        preferredDate: date,
-        preferredTime: time,
-        notes: notes.trim(),
-        requestStatus: "pending",
-        status: "pending",
-        paymentStatus: "not_started",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      let ref;
-      if (homecare) {
-        ref = await addDoc(collection(db, "homecareRequests"), {
-          ...common,
-          serviceId: selectedService.id,
-          service: selectedService.title,
-          address: address.trim(),
-          durationHours,
-          providerUid: null,
-          quotedHourlyRateZar: null,
-          totalAmountZar: null,
-          paymentNote: "Payment must only be collected through the configured secure checkout after the provider and amount are confirmed."
-        });
-      } else {
-        ref = await addDoc(collection(db, "appointments"), {
-          ...common,
-          doctorId: selectedDoctor.id,
-          doctorName: displayName(selectedDoctor),
-          specialty: displaySpecialty(selectedDoctor),
-          consultationMode: consultation,
-          consultationFeeZar: Number.isFinite(Number(selectedDoctor.consultationFee ?? selectedDoctor.consultation_fee))
-            ? Number(selectedDoctor.consultationFee ?? selectedDoctor.consultation_fee) : null
-        });
-      }
-      setSaved({ id: ref.id, kind: homecare ? "homecare" : "appointment" });
-      setStep(homecare ? 3 : 4);
-    } catch (e) {
-      setError(e?.code === "permission-denied"
-        ? "Firebase security rules denied this request. No booking was confirmed; an administrator must configure patient-owned booking permissions."
-        : e?.message || "We could not submit your request. Please try again.");
-    } finally {
-      setBusy(false);
-    }
+  const saveRequest = () => {
+    if (saved) return saved;
+    const item = saveTestBooking({
+      type: homecare ? "homecare" : "doctor-appointment",
+      patientName: name.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      service: homecare ? selectedService.title : selectedDoctor.name,
+      doctorName: homecare ? "" : selectedDoctor.name,
+      doctorId: homecare ? "" : selectedDoctor.id,
+      specialty: homecare ? "" : selectedDoctor.specialty,
+      consultation,
+      date,
+      time,
+      duration,
+      notes: notes.trim(),
+      quote: homecare ? 350 : selectedDoctor.fee,
+      quoteCurrency: "ZAR",
+      status: "awaiting_provider_review",
+      paymentStatus: "not_started",
+      disclaimer: "Test request only. Not sent to a real provider."
+    });
+    setSaved(item);
+    return item;
   };
 
-  const back = () => {
-    setError("");
-    if (step === 0) onBack();
-    else setStep(current => Math.max(0, current - 1));
+  const continueFlow = () => {
+    setError(""); setNotice("");
+    if (homecare && step === 1 && (!name.trim() || !phone.trim() || !address.trim() || !date || !time)) {
+      setError("Enter your test name, phone, care address, preferred date and time."); return;
+    }
+    if (!homecare && step === 2 && (!name.trim() || !phone.trim() || !date || !time)) {
+      setError("Enter your test name, phone, preferred date and time."); return;
+    }
+    if (homecare && step === 2) {
+      saveRequest();
+      setNotice("Test care request saved locally. It has not been sent to a provider.");
+    }
+    if (!homecare && step === 4) {
+      saveRequest();
+      setNotice("Test appointment request saved locally. It has not been sent to a doctor.");
+    }
+    setStep(current => Math.min(current + 1, steps.length - 1));
   };
-  const iconFor = item => item.id === "medication_support" || item.id === "specialised_care"
-    ? <ShieldCheck size={20}/> : item.id === "elderly_care" ? <Heart size={20}/> : <House size={20}/>;
-
-  if (!user?.uid) return <section className="page-content booking-page">
-    <button className="booking-back-link" onClick={onBack}><ArrowLeft size={16}/> Back to HealthReachCare</button>
-    <div className="booking-main-card"><div className="booking-success-illustration"><UserRound size={36}/></div><h2>Sign in to continue</h2><p className="booking-muted">Bookings are linked to your account so you can follow provider responses. Open Account and sign in or create your account, then return here.</p><button className="button button-primary" onClick={onBack}>Back to sign in <ArrowRight size={16}/></button></div>
-  </section>;
+  const back = () => { setError(""); setNotice(""); if (step === 0) onBack(); else setStep(current => Math.max(0, current - 1)); };
+  const stepLabel = index => index < step ? "complete" : index === step ? "current" : "";
 
   return <section className="page-content booking-page">
-    <button className="booking-back-link" onClick={back}><ArrowLeft size={16}/> {step === 0 ? "Back to HealthReachCare" : "Previous step"}</button>
-    <div className="booking-heading">
-      <div className="booking-heading-icon">{homecare ? <House size={25}/> : <Stethoscope size={25}/>}</div>
-      <div><div className="eyebrow">{homecare ? "HOME CARE BOOKING" : "DOCTOR APPOINTMENT"}</div><h1>{stepTitle}</h1><p>{homecare ? "Request professional care at your address and track the provider response." : "Choose a verified practitioner and submit a request for their availability."}</p></div>
-    </div>
-    <div className="booking-progress" aria-label={`Step ${step + 1} of ${steps.length}`}>
-      {steps.map((label, index) => <div key={label} className={index < step ? "booking-progress-step complete" : index === step ? "booking-progress-step current" : "booking-progress-step"}><span>{index < step ? <Check size={14}/> : index + 1}</span><small>{label}</small></div>)}
-    </div>
-    <div className="booking-test-banner"><ShieldCheck size={18}/><span><strong>Booking safety:</strong> only verified providers are listed. A request is not a confirmed appointment or paid homecare visit until provider acceptance, availability checks and secure payment verification are complete.</span></div>
+    <div className="booking-heading"><div className="booking-heading-icon">{homecare ? <House size={25}/> : <Stethoscope size={25}/>}</div><div><div className="eyebrow">{homecare ? "HOME CARE BOOKING" : "DOCTOR APPOINTMENT"}</div><h1>{stepTitle}</h1><p>{homecare ? "Arrange care at home, step by step." : "Compare sample practitioner profiles and request a preferred time."}</p></div><span className="test-mode-chip"><Sparkles size={13}/> TEST MODE</span></div>
+    <div className="booking-progress" aria-label={`Step ${step + 1} of ${steps.length}`}>{steps.map((label, index) => <div key={label} className={"booking-progress-step " + stepLabel(index)}><span>{index < step ? <Check size={14}/> : index + 1}</span><small>{label}</small></div>)}</div>
+    <div className="booking-test-banner"><ShieldCheck size={18}/><span><strong>Testing mode:</strong> sample profiles, dates and fees only. No real provider is contacted, no live availability is checked, and no payment is collected.</span></div>
+    {error && <div className="inline-message"><AlertCircle size={18}/><span>{error}</span></div>}
+    {notice && <div className="inline-message"><CheckCircle2 size={18}/><span>{notice}</span></div>}
 
-    {loading && <div className="state-card"><RefreshCw className="spin" size={22}/><div><strong>Loading approved providers</strong><p>Checking live HealthReachCare records.</p></div></div>}
-    {loadError && <div className="state-card state-error"><AlertCircle size={22}/><div><strong>Provider list unavailable</strong><p>{loadError}</p></div></div>}
+    {!homecare && step === 0 && <div className="booking-layout"><div className="booking-main-card"><div className="booking-section-title"><div><h2>Choose a practitioner</h2><p>Sample profiles for workflow testing only.</p></div><span className="step-count">01 / 07</span></div><div className="booking-choice-list">{doctors.map(doctor => <button type="button" key={doctor.id} className={selectedDoctor.id === doctor.id ? "booking-doctor-row selected" : "booking-doctor-row"} onClick={() => setSelectedDoctor(doctor)}><span className="booking-doctor-avatar">{doctor.initials}</span><span className="booking-doctor-info"><strong>{doctor.name}</strong><small>{doctor.specialty}</small><small><MapPin size={13}/> {doctor.location}</small></span><span className="booking-doctor-fee">{money(doctor.fee)}<small>sample fee</small></span><span className="booking-radio">{selectedDoctor.id === doctor.id && <Check size={13}/>}</span></button>)}</div><button className="button button-primary" onClick={continueFlow}>Compare doctor <ArrowRight size={16}/></button></div><aside className="booking-side-card"><div className="booking-side-title"><ClipboardCheck size={19}/><strong>Your selection</strong></div><div className="booking-summary-doctor"><span className="booking-doctor-avatar">{selectedDoctor.initials}</span><div><strong>{selectedDoctor.name}</strong><small>{selectedDoctor.specialty}</small></div></div><div className="booking-summary-line"><span>Sample fee</span><strong>{money(selectedDoctor.fee)}</strong></div><p className="booking-fine-print">Not a verified provider listing or a real price.</p></aside></div>}
 
-    {!loading && !loadError && !homecare && step === 0 && <div className="booking-layout">
-      <div className="booking-main-card"><div className="booking-section-title"><div><h2>Find your doctor</h2><p>Only active, verified practitioners are displayed.</p></div><span className="step-count">{doctors.length} verified</span></div>
-        {doctors.length ? <div className="booking-choice-list">{doctors.map(d => <button key={d.id} className={selectedDoctor?.id === d.id ? "booking-doctor-row selected" : "booking-doctor-row"} onClick={() => setSelectedDoctor(d)}>
-          <span className="booking-doctor-avatar">{displayName(d).split(" ").map(x=>x[0]).slice(0,2).join("")}</span><span className="booking-doctor-info"><strong>{displayName(d)}</strong><small>{displaySpecialty(d)}</small><small><MapPin size={13}/> {displayLocation(d)}</small></span><span className="booking-doctor-fee">{feeLabel(d)}<small>provider fee</small></span><span className="booking-radio">{selectedDoctor?.id === d.id && <Check size={13}/>}</span>
-        </button>)}</div> : <div className="empty-state"><Stethoscope size={25}/><h3>No verified doctors are available yet</h3><p>Only providers approved and published by HealthReachCare can appear here. No sample profiles are shown.</p></div>}
-      </div>
-      <aside className="booking-side-card"><div className="booking-side-title"><ClipboardCheck size={19}/><strong>Your selection</strong></div>{selectedDoctor ? <><div className="booking-summary-doctor"><span className="booking-doctor-avatar">{displayName(selectedDoctor).split(" ").map(x=>x[0]).slice(0,2).join("")}</span><div><strong>{displayName(selectedDoctor)}</strong><small>{displaySpecialty(selectedDoctor)}</small></div></div><div className="booking-summary-line"><span>Consultation</span><strong>{consultation}</strong></div><div className="booking-summary-line"><span>Fee</span><strong>{feeLabel(selectedDoctor)}</strong></div><button className="button button-primary full" onClick={()=>setStep(1)}>Continue <ArrowRight size={16}/></button></> : <p className="booking-muted">Select a verified doctor to continue.</p>}</aside>
-    </div>}
+    {!homecare && step === 1 && <div className="booking-layout"><div className="booking-main-card"><div className="booking-section-title"><div><h2>Compare practitioners</h2><p>Review sample details before choosing your preferred consultation.</p></div><span className="step-count">02 / 07</span></div><div className="booking-choice-list">{doctors.map(doctor => <button type="button" key={doctor.id} className={selectedDoctor.id === doctor.id ? "booking-doctor-row selected" : "booking-doctor-row"} onClick={() => setSelectedDoctor(doctor)}><span className="booking-doctor-avatar">{doctor.initials}</span><span className="booking-doctor-info"><strong>{doctor.name}</strong><small>{doctor.specialty}</small><small><Star size={13}/> Sample profile · {doctor.location}</small></span><span className="booking-doctor-fee">{money(doctor.fee)}<small>sample fee</small></span><span className="booking-radio">{selectedDoctor.id === doctor.id && <Check size={13}/>}</span></button>)}</div><label className="booking-form-label">Consultation type<select value={consultation} onChange={e => setConsultation(e.target.value)}>{["In-person","Phone","Video (preview only)"].map(value => <option key={value}>{value}</option>)}</select></label><button className="button button-primary" onClick={continueFlow}>Choose a time <ArrowRight size={16}/></button></div><aside className="booking-side-card"><div className="booking-side-title"><ClipboardCheck size={19}/><strong>Compare summary</strong></div><strong>{selectedDoctor.name}</strong><p className="booking-fine-print">{selectedDoctor.specialty} · {consultation} · sample fee {money(selectedDoctor.fee)}</p></aside></div>}
 
-    {!loading && !loadError && !homecare && step === 1 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Consultation type</h2><p>Select a mode offered by the provider.</p></div></div><div className="booking-option-row">{doctorModes.map(mode=><button key={mode} className={consultation === mode ? "booking-option selected" : "booking-option"} onClick={()=>setConsultation(mode)}>{mode}</button>)}</div><p className="booking-muted">The provider must confirm the selected mode and appointment time.</p></div>}
+    {homecare && step === 0 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>What support do you need?</h2><p>Select a sample service to explore the request flow.</p></div><span className="step-count">01 / 07</span></div><div className="booking-service-grid">{services.map(service => <button type="button" key={service.id} className={selectedService.id === service.id ? "booking-service-card selected" : "booking-service-card"} onClick={() => setSelectedService(service)}><span className="booking-service-icon"><House size={20}/></span><strong>{service.title}</strong><small>{service.description}</small>{selectedService.id === service.id && <CheckCircle2 size={17}/>}</button>)}</div><button className="button button-primary" onClick={continueFlow}>Continue to details <ArrowRight size={16}/></button></div>}
 
-    {!loading && !loadError && !homecare && step === 2 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Schedule your appointment</h2><p>Choose your preferred time. The provider must confirm availability.</p></div></div><div className="booking-form-grid"><label className="booking-field"><span>Preferred date</span><input type="date" min={minimumDate} value={date} onChange={e=>setDate(e.target.value)} required/></label><label className="booking-field"><span>Full name</span><input value={name} onChange={e=>setName(e.target.value)} required/></label><label className="booking-field"><span>Phone number</span><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="e.g. 082 123 4567" required/></label></div><div className="booking-field"><span>Preferred time</span><div className="booking-time-grid">{times.map(t=><button key={t} className={time === t ? "booking-time selected" : "booking-time"} onClick={()=>setTime(t)}><Clock3 size={15}/>{t}</button>)}</div></div><label className="booking-field"><span>Reason for visit (optional)</span><textarea rows={3} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Brief non-sensitive booking note. Avoid sharing detailed medical records here."/></label></div>}
+    {((homecare && step === 1) || (!homecare && step === 2)) && <div className="booking-layout"><div className="booking-main-card"><div className="booking-section-title"><div><h2>{homecare ? "Care visit details" : "Schedule your preferred time"}</h2><p>This is a request, not a confirmed appointment.</p></div><span className="step-count">{homecare ? "02" : "03"} / 07</span></div><div className="booking-form-grid"><label>Full name<input required value={name} onChange={e => setName(e.target.value)} placeholder="Test patient name"/></label><label>Phone number<input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Test number only"/></label><label>Preferred date<input required type="date" min={localDate()} value={date} onChange={e => setDate(e.target.value)}/></label><label>Preferred time<select required value={time} onChange={e => setTime(e.target.value)}><option value="">Choose a time</option>{times.map(value => <option key={value}>{value}</option>)}</select></label>{homecare ? <><label className="booking-form-full">Care address<input required value={address} onChange={e => setAddress(e.target.value)} placeholder="Test address only"/></label><label>Duration<select value={duration} onChange={e => setDuration(e.target.value)}>{["1 hour","2 hours","4 hours","8 hours","Overnight","To be discussed"].map(value => <option key={value}>{value}</option>)}</select></label></> : <label className="booking-form-full">Consultation type<select value={consultation} onChange={e => setConsultation(e.target.value)}>{["In-person","Phone","Video (preview only)"].map(value => <option key={value}>{value}</option>)}</select></label>}<label className="booking-form-full">Additional notes<textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Do not include sensitive medical information."/></label></div><button className="button button-primary" onClick={continueFlow}>Review request <ArrowRight size={16}/></button></div><aside className="booking-side-card"><div className="booking-side-title"><ClipboardCheck size={19}/><strong>Request summary</strong></div><strong>{homecare ? selectedService.title : selectedDoctor.name}</strong><div className="booking-summary-line"><span>Preferred time</span><strong>{date || "Not selected"} {time}</strong></div><div className="booking-summary-line"><span>Estimated test amount</span><strong>{money(homecare ? 350 : selectedDoctor.fee)}</strong></div><p className="booking-fine-print">Illustrative only. The provider has not accepted this request.</p></aside></div>}
 
-    {homecare && step === 0 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>What care do you need?</h2><p>Choose the service that best matches your needs.</p></div></div><div className="booking-service-grid">{services.map(s=><button key={s.id} className={selectedService.id === s.id ? "booking-service-card selected" : "booking-service-card"} onClick={()=>setSelectedService(s)}><span>{iconFor(s)}</span><strong>{s.title}</strong><small>{s.description}</small><span className="booking-select-label">{selectedService.id === s.id ? "Selected" : "Select service"}</span></button>)}</div></div>}
+    {homecare && step === 2 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Review and submit test request</h2><p>Check the details before saving locally.</p></div><span className="step-count">03 / 07</span></div><div className="booking-summary-table">{[["Service",selectedService.title],["Patient",name],["Phone",phone],["Address",address],["Preferred visit",date + " · " + time],["Duration",duration],["Payment","Not collected"]].map(([label,value]) => <div className="booking-summary-line" key={label}><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div><button className="button button-primary" onClick={continueFlow}>Save test request <ArrowRight size={16}/></button></div>}
 
-    {homecare && step === 1 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Tell us about the visit</h2><p>Share contact details and where care is needed.</p></div></div><div className="booking-form-grid"><label className="booking-field"><span>Full name</span><input value={name} onChange={e=>setName(e.target.value)} required/></label><label className="booking-field"><span>Phone number</span><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="e.g. 082 123 4567" required/></label><label className="booking-field"><span>Care address</span><input value={address} onChange={e=>setAddress(e.target.value)} placeholder="Street, suburb, town" required/></label><label className="booking-field"><span>Preferred date</span><input type="date" min={minimumDate} value={date} onChange={e=>setDate(e.target.value)} required/></label><label className="booking-field"><span>Preferred time</span><select value={time} onChange={e=>setTime(e.target.value)}><option value="">Choose a time</option>{times.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label className="booking-field"><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}>{["1","2","4","8"].map(h=><option key={h} value={h}>{h} {h === "1" ? "hour" : "hours"}</option>)}</select></label></div><label className="booking-field"><span>Care instructions (optional)</span><textarea rows={3} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Share practical care requirements. Avoid unnecessary sensitive medical details."/></label></div>}
+    {((homecare && step === 3) || (!homecare && step === 3)) && <div className="booking-main-card"><div className="booking-section-title"><div><h2>{homecare ? "Illustrative provider quote" : "Payment preview"}</h2><p>No real quote or payment request is sent.</p></div><span className="step-count">{homecare ? "04" : "04"} / 07</span></div><div className="booking-payment-preview"><div className="booking-payment-icon"><CreditCard size={25}/></div><div><strong>{money(homecare ? 350 : selectedDoctor.fee)}</strong><p>{homecare ? "Sample home-care quote" : "Sample consultation fee"}</p></div></div><div className="booking-test-banner"><ShieldCheck size={18}/><span>Secure payment integration is pending. This is a payment screen mock-up only; no card details are requested and no funds are collected.</span></div><button className="button button-primary" onClick={continueFlow}>{homecare ? "Continue to payment preview" : "Continue to confirmation"} <ArrowRight size={16}/></button></div>}
 
-    {!loading && !loadError && ((homecare && step === 2) || (!homecare && step === 3)) && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Review before submitting</h2><p>Your request will be sent to the booking system for provider review.</p></div></div><div className="booking-summary-table">{[[ "Patient", name ],["Service", homecare ? selectedService.title : displayName(selectedDoctor || {})],["Consultation", homecare ? `${durationHours} hours` : consultation],["Address", homecare ? address : displayLocation(selectedDoctor || {})],["Preferred date", date],["Preferred time", time],["Status", "Pending provider review"],["Payment", "Not collected"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div>{homecare && <div className="booking-payment-preview"><div className="booking-payment-icon"><CreditCard size={25}/></div><div><strong>{estimatedTotal == null ? "Price not available yet" : `Indicative rate: R${lowestRate.toFixed(2)}/hour · R${estimatedTotal.toFixed(2)} for ${durationHours} hours`}</strong><p>{estimatedTotal == null ? "We will not invent a price. An approved provider rate must be available before a payable total can be confirmed." : "This is an estimate from the lowest matching approved provider rate. The final amount must be confirmed by the trusted booking/payment service before checkout."}</p></div></div>}</div>}
+    {!homecare && step === 4 && <div className="booking-main-card"><div className="booking-section-title"><div><h2>Confirm your test request</h2><p>This creates a local request record only.</p></div><span className="step-count">05 / 07</span></div><div className="booking-summary-table">{[["Practitioner",selectedDoctor.name],["Specialty",selectedDoctor.specialty],["Consultation",consultation],["Patient",name],["Phone",phone],["Preferred time",date + " · " + time],["Payment","Not collected"]].map(([label,value]) => <div className="booking-summary-line" key={label}><span>{label}</span><strong>{value || "Not specified"}</strong></div>)}</div><button className="button button-primary" onClick={continueFlow}>Save test appointment <ArrowRight size={16}/></button></div>}
 
-    {!loading && !loadError && ((homecare && step === 3) || (!homecare && step === 4)) && <div className="booking-main-card"><div className="booking-success-illustration"><CheckCircle2 size={42}/></div><h2>Request submitted</h2><p className="booking-muted">Your request was saved to Firebase and is awaiting provider review. It is not yet confirmed and no payment has been collected.</p><div className="booking-summary-table">{[[ "Reference", saved?.id || "Available in your activity list" ],["Status", "Pending provider review"],["Payment", "Not collected"]].map(([label,value])=><div key={label} className="booking-summary-line"><span>{label}</span><strong>{value}</strong></div>)}</div><div className="booking-test-banner"><ShieldCheck size={18}/> A secure server-side availability reservation and payment verification are still required before the booking can be confirmed or paid.</div><div className="booking-timeline"><div className="active"><span>1</span><div><strong>Request received</strong><small>Saved to the booking collection</small></div></div><div><span>2</span><div><strong>Provider review and availability check</strong><small>Pending provider action</small></div></div><div><span>3</span><div><strong>Secure checkout and confirmation</strong><small>Only after the trusted payment service is connected</small></div></div></div></div>}
+    {((homecare && step >= 4) || (!homecare && step >= 5)) && <div className="booking-main-card"><div className="booking-success-illustration">{step === steps.length - 1 ? <Heart size={40}/> : <CheckCircle2 size={40}/>}</div><div className="eyebrow">{homecare ? "HOME CARE TEST REQUEST" : "DOCTOR BOOKING TEST REQUEST"}</div><h2>{step === steps.length - 1 ? (favourite ? "Saved to test favourites" : "Favourites") : (homecare ? "Track your request" : "Your care journey")}</h2><p className="booking-muted">{saved ? "Reference " + saved.id + ". This request is stored locally and is not sent to a real provider." : "This screen is a test preview; no request has been sent to a provider."}</p><div className="booking-summary-table">{[["Reference",saved?.id || "Not created"],["Status",saved ? "Awaiting provider review (test)" : "Not submitted"],["Payment","Not collected"],["Preferred time",date + " · " + time]].map(([label,value]) => <div className="booking-summary-line" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>{step === steps.length - 1 ? <button className="button button-primary" onClick={() => { setFavourite(value => !value); setNotice(favourite ? "Removed from local test favourites." : "Saved as a local test favourite."); }}><Heart size={16}/>{favourite ? "Remove favourite" : "Add to favourites"}</button> : <button className="button button-primary" onClick={continueFlow}>Continue <ArrowRight size={16}/></button>}<button className="button button-outline" onClick={onBack}>Return to patient home</button></div>}
 
-    {error && <p className="booking-validation-error">{error}</p>}
-    <div className="booking-actions"><button className="button button-outline" onClick={back}><ArrowLeft size={16}/> {step === 0 ? "Cancel" : "Back"}</button>{((homecare && step < 2) || (!homecare && step < 3)) && <button className="button button-primary" disabled={loading || busy || (!homecare && doctors.length === 0)} onClick={()=>{setError(""); if (homecare && step === 1 && (!name.trim() || !phone.trim() || !address.trim() || !date || !time)) return setError("Enter your name, phone, address, date and time."); if (!homecare && step === 2 && (!name.trim() || !phone.trim() || !date || !time)) return setError("Enter your name, phone, preferred date and time."); setStep(current=>current+1);}}>{homecare && step === 1 ? "Review request" : !homecare && step === 2 ? "Review request" : "Continue"} <ArrowRight size={16}/></button>}{((homecare && step === 2) || (!homecare && step === 3)) && <button className="button button-primary" disabled={busy || loading} onClick={submitRequest}>{busy ? "Submitting…" : "Submit booking request"} <ArrowRight size={16}/></button>}{((homecare && step === 3) || (!homecare && step === 4)) && <button className="button button-primary" onClick={onBack}>Finish <Check size={16}/></button>}</div>
-    {saved && <p className="booking-saved-note">Reference: <strong>{saved.id}</strong> · Request only, not a paid confirmation.</p>}
+    <div className="booking-actions"><button className="button button-outline" onClick={back}><ArrowLeft size={16}/> {step === 0 ? "Back to patient home" : "Previous step"}</button>{step < steps.length - 1 && <span className="booking-muted">Step {step + 1} of {steps.length}</span>}</div>
   </section>;
 }
