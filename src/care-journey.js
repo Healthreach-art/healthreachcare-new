@@ -62,7 +62,7 @@ export function canMessageBooking(booking) {
 }
 
 export function canReviewBooking(booking, reviews = []) {
-  const completed = ["completed", "delivered"].includes(String(booking?.status || "").toLowerCase());
+  const completed = ["completed", "delivered"].includes(String(booking?.status || booking?.requestStatus || "").toLowerCase());
   return Boolean(booking?.id && completed && !reviews.some(review => review.bookingId === booking.id));
 }
 
