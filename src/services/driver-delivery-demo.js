@@ -39,21 +39,28 @@ export function ensureDemoDelivery() {
 }
 /** Reset only driver-demo records; preserve all unrelated test work and inventory. */
 export function resetDemoData() {
-  const r=updateWorkflow(d=>{
-    const demoOrders=d.orders.filter(o=>o?.testOnly === true && o?.[marker] === DRIVER_DEMO_VERSION);
-    const ids=new Set(demoOrders.map(o=>o.id));
-    for(const order of demoOrders){
-      if(order.stockDeducted&&!order.stockRestocked){
-        for(const line of order.items||[]){const product=d.inventory.find(p=>p.id===line.productId);if(product)product.stock=Number(product.stock||0)+Number(line.quantity||0);}
+  // Reset is intentionally empty-state: never create a synthetic order or payment.
+  // The only source of a new delivery is a patient checkout followed by successful
+  // simulated payment and pharmacy preparation/ready-for-delivery.
+  const r = updateWorkflow(d => {
+    const demoOrders = d.orders.filter(o => o?.testOnly === true && o?.[marker] === DRIVER_DEMO_VERSION);
+    const ids = new Set(demoOrders.map(o => o.id));
+    for (const order of demoOrders) {
+      if (order.stockDeducted && !order.stockRestocked) {
+        for (const line of order.items || []) {
+          const product = d.inventory.find(p => p.id === line.productId);
+          if (product) product.stock = Number(product.stock || 0) + Number(line.quantity || 0);
+        }
       }
     }
-    d.orders=d.orders.filter(o=>!isDemo(o));
-    d.payments=d.payments.filter(p=>!ids.has(p.orderId)&&!ids.has(p.id));
-    return {value:makeSeed(d)};
+    d.orders = d.orders.filter(o => !ids.has(o.id));
+    d.payments = d.payments.filter(p => !ids.has(p.orderId) && !ids.has(p.id));
+    return { value: null };
   });
-  if(r?.error) throw new Error(r.error);
-  return r.value;
+  if (r?.error) throw new Error(r.error);
+  return null;
 }
+
 export async function listAvailableDeliveries() {
   return readWorkflow().orders.filter(o=>isDemo(o)&&o.status==="ready_for_delivery"&&!o.driverId).map(clone);
 }
